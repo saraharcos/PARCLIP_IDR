@@ -1,0 +1,11 @@
+
+####################################################################################################
+# Starting pipeline at Tue Aug 20 12:50:14 CDT 2019
+# Input files:  [sub_SRR944646_trimmed.fastq, sub_SRR944647_trimmed.fastq, sub_SRR944648_trimmed.fastq]
+# Output Log:  .bpipe/logs/12511.log
+# Stage preprocess
+wc -l sub_SRR944646_trimmed.fastq > sub_SRR944646_trimmed.fasta
+wc -l sub_SRR944647_trimmed.fastq > sub_SRR944647_trimmed.fasta
+wc -l sub_SRR944648_trimmed.fastq > sub_SRR944648_trimmed.fasta
+# ################ Finished at Tue Aug 20 12:50:15 CDT 2019 Duration = 1.151 seconds #################
+
