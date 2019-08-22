@@ -83,6 +83,13 @@ PARparams = {
 	doc desc:"editPARalyzerINIfile.pl v2.0"
 }
 
+//Generate pseudoreplicates and pooled replicates from aligned sam files
+pseudoreplicates = {
+  transform("*.sam") {
+    
+  }
+}
+
 //Runs PARalyzer, creating clusters, groups, a distribution file, and a sam file of PARalyzer utilized reads
 @Transform("sam")
 PARalyze = {
