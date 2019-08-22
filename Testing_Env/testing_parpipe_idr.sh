@@ -65,6 +65,15 @@ align = {
 	doc desc:"filterSAMMultiMapperTC.pl v2.0"
 }
 
+//Generate pseudoreplicates and pooled replicates from aligned sam files
+pseudoreplicates = {
+  transform("*.aligned.sam"){
+    exec """
+        ${CUSTOMSCRIPTS}pseudoreplicates.sh $input1 > $output1
+        """
+  }
+}
+
 //Creates a .ini file containing parameters and file names to be used by PARalyzer
 PARparams = {
 	transform("*.aligned.sam") to(".ini") {
@@ -83,15 +92,8 @@ PARparams = {
 	doc desc:"editPARalyzerINIfile.pl v2.0"
 }
 
-//Generate pseudoreplicates and pooled replicates from aligned sam files
-pseudoreplicates = {
-  transform("*.sam") {
-    
-  }
-}
-
 //Runs PARalyzer, creating clusters, groups, a distribution file, and a sam file of PARalyzer utilized reads
-@Transform("sam")
+@Transform("*.sam")
 PARalyze = {
 	produce ("${input1.prefix}.clusters","${input1.prefix}.groups","${input1.prefix}.distribution","${input1.prefix}.sam") {
                 exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input1"
@@ -110,5 +112,5 @@ PARalyze = {
 
 
 Bpipe.run {
-    preprocess + align + PARparams
+    preprocess + align + pseudoreplicates + PARparams
 }
