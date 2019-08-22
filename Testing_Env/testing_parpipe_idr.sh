@@ -65,13 +65,41 @@ align = {
 	doc desc:"filterSAMMultiMapperTC.pl v2.0"
 }
 
+//Generate pooled replicate
+pooled = {
+  produce("pooled.aligned.sam"){
+    from("*aligned.sam"){
+      exec """
+        cat $inputs > $output1
+      """
+    }
+  }
+  forward(input1, input2, input3, output1)
+}
+
 //Generate pseudoreplicates and pooled replicates from aligned sam files
 pseudoreplicates = {
-  transform("*.aligned.sam"){
-    exec """
-        ${CUSTOMSCRIPTS}pseudoreplicates.sh $input1 > $output1
+  produce("*.aligned.sam"){
+    from("*.aligned.sam"){
+      exec """
+        ${CUSTOMSCRIPTS}pseudoreplicates.sh $input1
         """
+        
+      exec """
+        ${CUSTOMSCRIPTS}pseudoreplicates.sh $input2
+        """
+        
+     exec """
+        ${CUSTOMSCRIPTS}pseudoreplicates.sh $input3
+        """
+        
+      exec """
+        ${CUSTOMSCRIPTS}pseudoreplicates.sh $input4
+        """    
+    }
   }
+  forward(input1, input2, input3, output1, output2, output3, output4, output5, output6, output7, output8)
+  doc desc:"editPARalyzerINIfile.pl v2.0"
 }
 
 //Creates a .ini file containing parameters and file names to be used by PARalyzer
@@ -87,6 +115,38 @@ PARparams = {
         
         exec """
         perl ${CUSTOMSCRIPTS}editPARalyzerINIfile.pl ${CUSTOMSCRIPTS}Default_PARalyzer_Parameters.ini $input3 $BITFILE > $output3
+        """
+        
+        exec """
+        perl ${CUSTOMSCRIPTS}editPARalyzerINIfile.pl ${CUSTOMSCRIPTS}Default_PARalyzer_Parameters.ini $input4 $BITFILE > $output4
+        """
+        
+        exec """
+        perl ${CUSTOMSCRIPTS}editPARalyzerINIfile.pl ${CUSTOMSCRIPTS}Default_PARalyzer_Parameters.ini $input5 $BITFILE > $output5
+        """
+        
+        exec """
+        perl ${CUSTOMSCRIPTS}editPARalyzerINIfile.pl ${CUSTOMSCRIPTS}Default_PARalyzer_Parameters.ini $input6 $BITFILE > $output6
+        """
+        
+        exec """
+        perl ${CUSTOMSCRIPTS}editPARalyzerINIfile.pl ${CUSTOMSCRIPTS}Default_PARalyzer_Parameters.ini $input7 $BITFILE > $output7
+        """
+        
+        exec """
+        perl ${CUSTOMSCRIPTS}editPARalyzerINIfile.pl ${CUSTOMSCRIPTS}Default_PARalyzer_Parameters.ini $input8 $BITFILE > $output8
+        """
+        
+        exec """
+        perl ${CUSTOMSCRIPTS}editPARalyzerINIfile.pl ${CUSTOMSCRIPTS}Default_PARalyzer_Parameters.ini $input9 $BITFILE > $output9
+        """
+        
+        exec """
+        perl ${CUSTOMSCRIPTS}editPARalyzerINIfile.pl ${CUSTOMSCRIPTS}Default_PARalyzer_Parameters.ini $input10 $BITFILE > $output10
+        """
+        
+        exec """
+        perl ${CUSTOMSCRIPTS}editPARalyzerINIfile.pl ${CUSTOMSCRIPTS}Default_PARalyzer_Parameters.ini $input11 $BITFILE > $output11
         """
 	}
 	doc desc:"editPARalyzerINIfile.pl v2.0"
@@ -107,10 +167,42 @@ PARalyze = {
                 exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input3"
 		exec "mv ${input3.prefix}_PARalyzer_Utilized.sam ${input3.prefix}.sam"
         }
+  produce ("${input4.prefix}.clusters","${input4.prefix}.groups","${input4.prefix}.distribution","${input4.prefix}.sam") {
+                exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input4"
+		exec "mv ${input4.prefix}_PARalyzer_Utilized.sam ${input4.prefix}.sam"
+        }
+  produce ("${input5.prefix}.clusters","${input5.prefix}.groups","${input5.prefix}.distribution","${input5.prefix}.sam") {
+                exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input5"
+		exec "mv ${input5.prefix}_PARalyzer_Utilized.sam ${input5.prefix}.sam"
+        }
+  produce ("${input6.prefix}.clusters","${input6.prefix}.groups","${input6.prefix}.distribution","${input6.prefix}.sam") {
+                exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input6"
+		exec "mv ${input6.prefix}_PARalyzer_Utilized.sam ${input6.prefix}.sam"
+        }
+        
+  produce ("${input7.prefix}.clusters","${input7.prefix}.groups","${input7.prefix}.distribution","${input7.prefix}.sam") {
+                exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input7"
+		exec "mv ${input7.prefix}_PARalyzer_Utilized.sam ${input7.prefix}.sam"
+        }
+  produce ("${input8.prefix}.clusters","${input8.prefix}.groups","${input8.prefix}.distribution","${input8.prefix}.sam") {
+                exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input8"
+		exec "mv ${input8.prefix}_PARalyzer_Utilized.sam ${input8.prefix}.sam"
+        }
+  produce ("${input9.prefix}.clusters","${input9.prefix}.groups","${input9.prefix}.distribution","${input9.prefix}.sam") {
+                exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input9"
+		exec "mv ${input9.prefix}_PARalyzer_Utilized.sam ${input9.prefix}.sam"
+        }
+  produce ("${input10.prefix}.clusters","${input10.prefix}.groups","${input10.prefix}.distribution","${input10.prefix}.sam") {
+                exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input10"
+		exec "mv ${input10.prefix}_PARalyzer_Utilized.sam ${input10.prefix}.sam"
+        }
+  produce ("${input11.prefix}.clusters","${input11.prefix}.groups","${input11.prefix}.distribution","${input11.prefix}.sam") {
+                exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input11"
+		exec "mv ${input11.prefix}_PARalyzer_Utilized.sam ${input11.prefix}.sam"
+        }
 }
 
 
-
 Bpipe.run {
-    preprocess + align + pseudoreplicates + PARparams
+    preprocess + align + pooled + pseudoreplicates + PARparams + PARalyze
 }
