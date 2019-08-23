@@ -15,7 +15,7 @@ STAR_INDEX="${FILES}star_genome"
 GTF="${FILES}gencode.v19.chr_patch_hapl_scaff.annotation.gtf.gz"
 BITFILE="${FILES}GRCh37.p12.genome.2bit"
 MEMORY_LIMIT="32G"
-THREADS="4"
+THREADS="7"
 STAR_PARAMS="--outFilterMismatchNoverReadLmax 0.1"
 THREE_PRIME_ADAPTER_SEQUENCE="TGGAATTCTCGGGTGCCAAGG"
 FIVE_PRIME_ADAPTER_SEQUENCE="CCTTGGCACCCGAGAATTCCA"
@@ -202,7 +202,18 @@ PARalyze = {
         }
 }
 
+//Transforms PARalyzer clusters output unto narrowPeak format
+narrowPeak = {
+  produce("*.narrowPeak") {
+    from("*.clusters") {
+        exec """
+        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $inputs
+        """
+    }
+  }
+}
+
 
 Bpipe.run {
-    preprocess + align + pooled + pseudoreplicates + PARparams + PARalyze
+    preprocess + align + pooled + pseudoreplicates + PARparams + PARalyze + narrowPeak
 }
