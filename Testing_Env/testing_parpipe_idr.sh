@@ -200,6 +200,7 @@ PARalyze = {
                 exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input11"
 		exec "mv ${input11.prefix}_PARalyzer_Utilized.sam ${input11.prefix}.sam"
         }
+  forward(output1, output5, output9, output13, output17, output21, output25, output29, output33, output37, output41)
 }
 
 //Transforms PARalyzer clusters output unto narrowPeak format
@@ -207,7 +208,37 @@ narrowPeak = {
   produce("*.narrowPeak") {
     from("*.clusters") {
         exec """
-        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $inputs
+        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input1
+        """
+        exec """
+        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input2
+        """
+        exec """
+        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input3
+        """
+        exec """
+        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input4
+        """
+        exec """
+        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input5
+        """
+        exec """
+        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input6
+        """
+        exec """
+        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input7
+        """
+        exec """
+        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input8
+        """
+        exec """
+        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input9
+        """
+        exec """
+        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input10
+        """
+        exec """
+        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input11
         """
     }
   }

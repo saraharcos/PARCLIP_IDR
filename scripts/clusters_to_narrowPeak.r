@@ -2,10 +2,10 @@
 #Script to convert PARalyzer clusters output into ENCODE narrowPeak format
 
 #Error handling copied from this blog post: https://www.r-bloggers.com/passing-arguments-to-an-r-script-from-command-lines/
-install.packages("readr", quiet = TRUE, repos = "http://cran.us.r-project.org")
-install.packages("dplyr", quiet = TRUE, repos = "http://cran.us.r-project.org")
-library(readr)
-library(dplyr)
+#install.packages("readr", repos = "http://cran.us.r-project.org")
+#install.packages("dplyr", repos = "http://cran.us.r-project.org")
+#library(readr)
+#library(dplyr)
 
 # test if there is at least one argument: if not, return an error (from https://www.r-bloggers.com/passing-arguments-to-an-r-script-from-command-lines/)
 args = commandArgs(trailingOnly=TRUE)
@@ -19,9 +19,9 @@ if (length(args)==0) {
 #testing
 
 ## Adapted from https://www.r-bloggers.com/passing-arguments-to-an-r-script-from-command-lines/
-clusters = read_csv(args[1])
+clusters = read.csv(args[1], stringsAsFactors = FALSE)
 
-narrowPeak = tibble(
+narrowPeak = data.frame(
   chr = clusters$Chromosome,
   start = clusters$ClusterStart,
   end = clusters$ClusterEnd,
@@ -29,10 +29,11 @@ narrowPeak = tibble(
   score = clusters$ConversionEventCount,
   strand = clusters$Strand,
   signalValue = clusters$ModeScore,
-  pValue = -1,
-  qValue= -1,
-  peak = -1
+  pValue = rep(-1, nrow(clusters)),
+  qValue= rep(-1, nrow(clusters)),
+  peak = rep(-1, nrow(clusters)),
+  stringsAsFactors = FALSE
 )
 
-write_tsv(narrowPeak, args[2], colnames = FALSE)
+write.table(narrowPeak, args[2], col.names = FALSE, row.names = FALSE, sep = '\t')
 
