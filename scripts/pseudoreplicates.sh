@@ -20,5 +20,12 @@ get_seeded_random()
 #split into fileaa and fileab
 cat "$infile" | shuf --random-source=<(get_seeded_random) | split -l ${nlines} - ${infile}
 
-mv ${infile}aa pr1${infile}
-mv ${infile}ab pr2${infile}
+#get plain filenames
+
+filename1=$(basename -- "$1")
+extension1="${filename1##*.}"
+filename1="${filename1%.*.*}"
+
+
+mv ${infile}aa "$filename1"/pr1${filename1}.aligned.sam
+mv ${infile}ab "$filename1"/pr2${filename1}.aligned.sam
