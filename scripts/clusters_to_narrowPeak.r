@@ -14,6 +14,7 @@ if (length(args)==0) {
 } else if (length(args)==1) {
   # default output file
   args[2] = paste(args[1], ".narrowPeak", sep = "")
+  args[2] = gsub(".clusters", "", args[2])
 }
 
 #testing

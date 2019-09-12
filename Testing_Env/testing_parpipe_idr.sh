@@ -153,95 +153,69 @@ PARparams = {
 }
 
 //Runs PARalyzer, creating clusters, groups, a distribution file, and a sam file of PARalyzer utilized reads
-@Transform("*.sam")
 PARalyze = {
-	produce ("${input1.prefix}.clusters","${input1.prefix}.groups","${input1.prefix}.distribution","${input1.prefix}.sam") {
-                exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input1"
-		exec "mv ${input1.prefix}_PARalyzer_Utilized.sam ${input1.prefix}.sam"
-        }
-  produce ("${input2.prefix}.clusters","${input2.prefix}.groups","${input2.prefix}.distribution","${input2.prefix}.sam") {
-                exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input2"
-		exec "mv ${input2.prefix}_PARalyzer_Utilized.sam ${input2.prefix}.sam"
-        }
-  produce ("${input3.prefix}.clusters","${input3.prefix}.groups","${input3.prefix}.distribution","${input3.prefix}.sam") {
-                exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input3"
-		exec "mv ${input3.prefix}_PARalyzer_Utilized.sam ${input3.prefix}.sam"
-        }
-  produce ("${input4.prefix}.clusters","${input4.prefix}.groups","${input4.prefix}.distribution","${input4.prefix}.sam") {
-                exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input4"
-		exec "mv ${input4.prefix}_PARalyzer_Utilized.sam ${input4.prefix}.sam"
-        }
-  produce ("${input5.prefix}.clusters","${input5.prefix}.groups","${input5.prefix}.distribution","${input5.prefix}.sam") {
-                exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input5"
-		exec "mv ${input5.prefix}_PARalyzer_Utilized.sam ${input5.prefix}.sam"
-        }
-  produce ("${input6.prefix}.clusters","${input6.prefix}.groups","${input6.prefix}.distribution","${input6.prefix}.sam") {
-                exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input6"
-		exec "mv ${input6.prefix}_PARalyzer_Utilized.sam ${input6.prefix}.sam"
-        }
-        
-  produce ("${input7.prefix}.clusters","${input7.prefix}.groups","${input7.prefix}.distribution","${input7.prefix}.sam") {
-                exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input7"
-		exec "mv ${input7.prefix}_PARalyzer_Utilized.sam ${input7.prefix}.sam"
-        }
-  produce ("${input8.prefix}.clusters","${input8.prefix}.groups","${input8.prefix}.distribution","${input8.prefix}.sam") {
-                exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input8"
-		exec "mv ${input8.prefix}_PARalyzer_Utilized.sam ${input8.prefix}.sam"
-        }
-  produce ("${input9.prefix}.clusters","${input9.prefix}.groups","${input9.prefix}.distribution","${input9.prefix}.sam") {
-                exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input9"
-		exec "mv ${input9.prefix}_PARalyzer_Utilized.sam ${input9.prefix}.sam"
-        }
-  produce ("${input10.prefix}.clusters","${input10.prefix}.groups","${input10.prefix}.distribution","${input10.prefix}.sam") {
-                exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input10"
-		exec "mv ${input10.prefix}_PARalyzer_Utilized.sam ${input10.prefix}.sam"
-        }
-  produce ("${input11.prefix}.clusters","${input11.prefix}.groups","${input11.prefix}.distribution","${input11.prefix}.sam") {
-                exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input11"
-		exec "mv ${input11.prefix}_PARalyzer_Utilized.sam ${input11.prefix}.sam"
-        }
-  forward(output1, output5, output9, output13, output17, output21, output25, output29, output33, output37, output41)
+  produce("${input1.prefix}.clusters","${input1.prefix}.groups","${input1.prefix}.distribution","${input1.prefix}.sam",
+          "${input2.prefix}.clusters","${input2.prefix}.groups","${input2.prefix}.distribution","${input2.prefix}.sam",
+          "${input3.prefix}.clusters","${input3.prefix}.groups","${input3.prefix}.distribution","${input3.prefix}.sam",
+          "${input4.prefix}.clusters","${input4.prefix}.groups","${input4.prefix}.distribution","${input4.prefix}.sam",
+          "${input5.prefix}.clusters","${input5.prefix}.groups","${input5.prefix}.distribution","${input5.prefix}.sam",
+          "${input6.prefix}.clusters","${input6.prefix}.groups","${input6.prefix}.distribution","${input6.prefix}.sam",
+          "${input7.prefix}.clusters","${input7.prefix}.groups","${input7.prefix}.distribution","${input7.prefix}.sam",
+          "${input8.prefix}.clusters","${input8.prefix}.groups","${input8.prefix}.distribution","${input8.prefix}.sam",
+          "${input9.prefix}.clusters","${input9.prefix}.groups","${input9.prefix}.distribution","${input9.prefix}.sam",
+          "${input10.prefix}.clusters","${input10.prefix}.groups","${input10.prefix}.distribution","${input10.prefix}.sam",
+          "${input11.prefix}.clusters","${input11.prefix}.groups","${input11.prefix}.distribution","${input11.prefix}.sam") {
+            
+            exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input1"
+            exec "mv ${input1.prefix}_PARalyzer_Utilized.sam ${input1.prefix}.sam"
+            
+            exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input2"
+            exec "mv ${input2.prefix}_PARalyzer_Utilized.sam ${input2.prefix}.sam"
+            
+            exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input3"
+            exec "mv ${input3.prefix}_PARalyzer_Utilized.sam ${input3.prefix}.sam"
+            
+            exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input4"
+            exec "mv ${input4.prefix}_PARalyzer_Utilized.sam ${input4.prefix}.sam"
+            
+            exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input5"
+            exec "mv ${input5.prefix}_PARalyzer_Utilized.sam ${input5.prefix}.sam"
+            
+            exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input6"
+            exec "mv ${input6.prefix}_PARalyzer_Utilized.sam ${input6.prefix}.sam"
+            
+            exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input7"
+            exec "mv ${input7.prefix}_PARalyzer_Utilized.sam ${input7.prefix}.sam"
+            
+            exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input8"
+            exec "mv ${input8.prefix}_PARalyzer_Utilized.sam ${input8.prefix}.sam"
+            
+            exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input9"
+            exec "mv ${input9.prefix}_PARalyzer_Utilized.sam ${input9.prefix}.sam"
+            
+            exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input10"
+            exec "mv ${input10.prefix}_PARalyzer_Utilized.sam ${input10.prefix}.sam"
+            
+            exec "${CUSTOMSCRIPTS}PARalyzer ${MEMORY_LIMIT} $input11"
+            exec "mv ${input11.prefix}_PARalyzer_Utilized.sam ${input11.prefix}.sam"
+          }
 }
 
 //Transforms PARalyzer clusters output unto narrowPeak format
+@Transform("narrowPeak")
 narrowPeak = {
-  produce("*.narrowPeak") {
-    from("*.clusters") {
-        exec """
-        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input1
-        """
-        exec """
-        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input2
-        """
-        exec """
-        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input3
-        """
-        exec """
-        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input4
-        """
-        exec """
-        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input5
-        """
-        exec """
-        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input6
-        """
-        exec """
-        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input7
-        """
-        exec """
-        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input8
-        """
-        exec """
-        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input9
-        """
-        exec """
-        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input10
-        """
-        exec """
-        ${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input11
-        """
-    }
-  }
+	//from ("clusters")
+  exec "${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input1"
+  exec "${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input5"
+  exec "${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input9"
+  exec "${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input13"
+  exec "${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input17"
+  exec "${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input21"
+  exec "${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input25"
+  exec "${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input29"
+  exec "${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input33"
+  exec "${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input37"
+  exec "${CUSTOMSCRIPTS}clusters_to_narrowPeak.r $input41"
 }
 
 
