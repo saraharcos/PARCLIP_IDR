@@ -1,0 +1,286 @@
+---
+title: "Bandwidth_Testing"
+author: "Sarah Arcos"
+date: "12/17/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+#install.packages("dplyr")
+#install.packages("readr")
+#install.packages("idr")
+library(dplyr)
+library(readr)
+library(magrittr)
+library(idr)
+library(tidyr)
+library(purrr)
+library(RColorBrewer)
+
+# if (!requireNamespace("BiocManager", quietly = TRUE))
+#     install.packages("BiocManager")
+# 
+# BiocManager::install("GenomicRanges")
+
+library(GenomicRanges)
+library(ggplot2)
+library(stringr)
+```
+
+
+## Read in files and calculate ConversionSpecificity and T2Cfraction
+```{r}
+
+read_and_calc <- function(infile) {
+  read_tsv(infile, col_names = FALSE) %>%
+    select(X5, "Chromosome" = X7, "Start" = X8, "End" = X9, X11, "Strand" = X12) %>%
+    filter(X11 != "-1") %>%
+    separate(X5, sep = ",", into = c("Location", "ReadCount", "EndBase")) %>%
+    separate(X11, sep = ",", into = c("AlignedTo", "Name", "Gene", "Seq", "Reads", "ModeLocation", 
+                                      "ModeScore", "ConLocCount", "ConEvCount", "NonConEvCount", "Annotation")) %>%
+    group_by(Gene, Location) %>%
+    mutate(TotalReads = sum(as.numeric(ReadCount))) %>%
+    select(-ReadCount, -EndBase) %>%
+    unique() %>%
+    spread(Location, TotalReads, fill = 0) %>%
+    mutate(T2Cfraction = T2C_1 / (T2C_1 + Other_1 + None),
+          ConversionSpecificity = log10(T2C_1 / (Other_1 + 1)),
+          ModeScore = as.numeric(ModeScore))
+}
+
+r2_bw2 <- read_and_calc("~/PARpipe/YTHDF2_rep2_bw2/SRR944647.allclusters.bed")
+r2_bw3 <- read_and_calc("~/PARpipe/YTHDF2_rep2/SRR944647.allclusters.bed")
+r2_bw4 <- read_and_calc("~/PARpipe/YTHDF2_rep2_bw4/SRR944647.allclusters.bed")
+
+r3_bw2 <- read_and_calc("~/PARpipe/YTHDF2_rep3_bw2/SRR944648.allclusters.bed")
+r3_bw3 <- read_and_calc("~/PARpipe/YTHDF2_rep3/SRR944648.allclusters.bed")
+r3_bw4 <- read_and_calc("~/PARpipe/YTHDF2_rep3_bw4/SRR944648.allclusters.bed")
+
+
+r2_bw2 %>%
+  select(Chromosome, Start, End, Gene, ModeScore, Strand) %>%
+  write_tsv("~/PARpipe/IGV_files/r2_bw2.bed", col_names = FALSE)
+
+r2_bw3 %>%
+  select(Chromosome, Start, End, Gene, ModeScore, Strand) %>%
+  write_tsv("~/PARpipe/IGV_files/r2_bw3.bed", col_names = FALSE)
+
+r2_bw4 %>%
+  select(Chromosome, Start, End, Gene, ModeScore, Strand) %>%
+  write_tsv("~/PARpipe/IGV_files/r2_bw4.bed", col_names = FALSE)
+
+r3_bw2 %>%
+  select(Chromosome, Start, End, Gene, ModeScore, Strand) %>%
+  write_tsv("~/PARpipe/IGV_files/r3_bw2.bed", col_names = FALSE)
+
+r3_bw3 %>%
+  select(Chromosome, Start, End, Gene, ModeScore, Strand) %>%
+  write_tsv("~/PARpipe/IGV_files/r3_bw3.bed", col_names = FALSE)
+
+r3_bw4 %>%
+  select(Chromosome, Start, End, Gene, ModeScore, Strand) %>%
+  write_tsv("~/PARpipe/IGV_files/r3_bw4.bed", col_names = FALSE)
+```
+
+
+```{r}
+
+plot_overlaps <- function(rep1, rep2, title){
+  p1 <- GRanges(rep1$Chromosome, IRanges(rep1$Start, rep1$End), score=rep1$ModeScore)
+  p2 <- GRanges(rep2$Chromosome, IRanges(rep2$Start, rep2$End), score=rep2$ModeScore)
+  p1 <- keepStandardChromosomes(p1, pruning.mode="coarse")
+  p2 <- keepStandardChromosomes(p2, pruning.mode="coarse")
+  
+  overlap_indices <- findOverlaps(p1, p2, maxgap = 100)
+  
+  print(paste("Number of peaks in dataset1: ", length(p1)))
+  print(paste("Number of peaks in dataset2: ", length(p2)))
+  print(paste("Number overlapped peaks: ", length(overlap_indices)))
+  
+  overlap_ranges <- pintersect(p1[queryHits(overlap_indices)], p2[subjectHits(overlap_indices)])
+
+  overlap_width <- width(overlap_ranges)
+  p1_width <- width(p1[queryHits(overlap_indices)])
+  p2_width <- width(p2[subjectHits(overlap_indices)])
+
+  gap_ranges <- pgap(p1[queryHits(overlap_indices)], p2[subjectHits(overlap_indices)])
+
+  gap_widths <- width(gap_ranges)
+
+
+  overlap_neg <- -1 * overlap_width
+
+  gap_overlap <- c(overlap_neg, gap_widths)
+
+  hist(gap_overlap[gap_overlap > -50 & gap_overlap < 50 & gap_overlap != 0], breaks = 100)
+} 
+
+plot_overlaps(r2_bw4, r3_bw4)
+```
+
+Bandwidth = 2
+```{r}
+plot_overlaps(r2_bw2, r3_bw2)
+```
+
+Compare different bandwidths between replicates:
+```{r}
+plot_overlaps(r2_bw3, r3_bw4)
+plot_overlaps(r2_bw2, r3_bw4)
+
+
+hist(str_length(r2_bw3$Seq)[str_length(r2_bw3$Seq) < 100], breaks = 100)
+hist(str_length(r3_bw3$Seq)[str_length(r3_bw3$Seq) < 100], breaks = 100)
+
+
+
+
+
+```
+
+
+
+
+
+Bandwidth = 0.5
+```{r}
+r2_bw0.5 <- read_and_calc("~/PARpipe/YTHDF2_rep2_bw0.5/SRR944647.allclusters.bed")
+
+r3_bw0.5 <- read_and_calc("~/PARpipe/YTHDF2_rep3_bw0.5/SRR944648.allclusters.bed")
+
+plot_overlaps(r2_bw0.5, r3_bw0.5)
+```
+
+Bandwidth = 10
+```{r}
+r2_bw10 <- read_and_calc("~/PARpipe/YTHDF2_rep2_bw10/SRR944647.allclusters.bed")
+
+r3_bw10 <- read_and_calc("~/PARpipe/YTHDF2_rep3_bw10/SRR944648.allclusters.bed")
+
+plot_overlaps(r2_bw10, r3_bw10)
+```
+
+Hafner = 5
+```{r}
+r2_hafner5 <- read_and_calc("~/PARpipe/YTHDF2_rep2_hafner5/SRR944647.allclusters.bed")
+
+r3_hafner5 <- read_and_calc("~/PARpipe/YTHDF2_rep3_hafner5/SRR944648.allclusters.bed")
+
+plot_overlaps(r2_hafner5, r3_hafner5)
+```
+
+Hafner = 10
+```{r}
+r2_hafner10 <- read_and_calc("~/PARpipe/YTHDF2_rep2_hafner10/SRR944647.allclusters.bed")
+
+r3_hafner10 <- read_and_calc("~/PARpipe/YTHDF2_rep3_hafner10/SRR944648.allclusters.bed")
+
+plot_overlaps(r2_hafner10, r3_hafner10)
+```
+
+
+##Generate IDR values
+```{r}
+calc_IDR <- function(dataset1, dataset2, Score, gap) {
+  
+  p1 <- GRanges(dataset1$Chromosome, IRanges(dataset1$Start, dataset1$End), score=pull(dataset1[Score]))
+  p2 <- GRanges(dataset2$Chromosome, IRanges(dataset2$Start, dataset2$End), score=pull(dataset2[Score]))
+  p1 <- keepStandardChromosomes(p1, pruning.mode="coarse")
+  p2 <- keepStandardChromosomes(p2, pruning.mode="coarse")
+
+  overlaps <- findOverlaps(p1, p2, maxgap = gap)
+
+ # print(paste("Gap used for overlap: ", gap))
+  #print(paste("Number of peaks in dataset1: ", length(p1)))
+  #print(paste("Number of peaks in dataset2: ", length(p2)))
+ # print(paste("Number overlapped peaks: ", length(overlaps)))
+
+  overlaps <- as_tibble(overlaps)
+
+  multi_overlaps <- overlaps %>%
+    mutate(queryScore = p1$score[.$queryHits],
+          subjectScore = p2$score[.$subjectHits]) %>%
+    group_by(queryHits) %>%
+    mutate(subjectMax = min(subjectScore)) %>%
+    ungroup() %>%
+    group_by(subjectHits) %>%
+    mutate(queryMax = min(queryScore)) %>%
+    mutate(topHit = case_when(
+      queryScore == queryMax & subjectScore == subjectMax ~ TRUE,
+      TRUE ~ FALSE
+  ))
+
+  overlaps_max <- multi_overlaps %>%
+    filter(topHit == TRUE)
+
+  #print(paste("Number of peaks breaking ties by max value: ", n_distinct(overlaps_max$queryHits)))
+
+  overlaps_df <- as.data.frame(overlaps)
+  overlaps_df <- overlaps_df[!duplicated(overlaps_df$queryHits) & !duplicated(overlaps_df$subjectHits),]
+  #print(paste("Number of final peaks using old-method: ", n_distinct(overlaps_df)))
+
+  y1 <- p1$score[overlaps_max$queryHits]
+  y2 <- p2$score[overlaps_max$subjectHits]
+  
+
+  #IDR calculation
+  #print("Calculating IDR")
+
+  dat <- cbind(y1, y2)
+  system.time({
+    res <- est.IDR(dat, mu=3, sigma=1, rho=.9, p=.5)
+  })
+
+  df <- data.frame(rep1=dat[,1],rep2=dat[,2],
+                 rank1=rank(-dat[,1]),rank2=rank(-dat[,2]),
+                 idr=res$idr)
+
+  #print(paste("Number of peaks with IDR < 0.25: ", df %>% filter(idr < 0.25) %>% n_distinct))
+
+  return(df)
+}
+
+```
+
+
+##plot motif counts in peaks
+```{r}
+
+plot_motifs <- function(dataset, idr, motifs){
+  idr %>%
+    left_join(dataset, by = c("rep2" = "ModeScore")) %>%
+    mutate(motif = str_detect(Seq, motifs),
+           idrSig = idr < 0.25) %>%
+    ggplot(aes(x = idrSig, fill = motif)) +
+      geom_bar(position = "fill")
+}
+
+
+m6A_full <- "AAACA|AAACC|AAACU|AGACA|AGACC|AGACU|GAACA|GAACC|GAACU|GGACA|GGACC|GGACU"
+
+m6A_min <- "GAC|AAC"
+
+
+idr_bw2 <- calc_IDR(r2_bw2, r3_bw2, "ModeScore", 1)
+
+plot_motifs(r3_bw2, idr_bw2, m6A_min)
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

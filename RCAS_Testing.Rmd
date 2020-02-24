@@ -1,0 +1,227 @@
+---
+title: "RCAS_Testing"
+author: "Sarah Arcos"
+date: "1/17/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# if (!requireNamespace("BiocManager", quietly=TRUE)) install.packages("BiocManager")
+# BiocManager::install('RCAS')
+
+library(dplyr)
+library(readr)
+library(magrittr)
+library(idr)
+library(tidyr)
+library(purrr)
+library(RColorBrewer)
+library(GenomicRanges)
+library(ggplot2)
+library(stringr)
+```
+
+So RCAS can't be installed because the R version is wrong, but I can't figure out how to update R on AWS. Temporary solution is to create necessary files, then scp them to my local machine. 
+
+List of desired files:
+ - IDR selected YTHDF dataset
+ - All YTHDF dataset
+ - IDR unselected dataset
+
+```{r}
+read_and_calc <- function(infile) {
+  read_tsv(infile, col_names = FALSE) %>%
+    select(X5, "Chromosome" = X7, "Start" = X8, "End" = X9, X11, "Strand" = X12) %>%
+    filter(X11 != "-1") %>%
+    separate(X5, sep = ",", into = c("Location", "ReadCount", "EndBase")) %>%
+    separate(X11, sep = ",", into = c("AlignedTo", "Name", "Gene", "Seq", "Reads", "ModeLocation", 
+                                      "ModeScore", "ConLocCount", "ConEvCount", "NonConEvCount", "Annotation")) %>%
+    group_by(Gene, Location) %>%
+    mutate(TotalReads = sum(as.numeric(ReadCount))) %>%
+    select(-ReadCount, -EndBase) %>%
+    unique() %>%
+    spread(Location, TotalReads, fill = 0) %>%
+    mutate(T2Cfraction = T2C_1 / (T2C_1 + Other_1 + None),
+          ConversionSpecificity = log10(T2C_1 / (Other_1 + 1)),
+          ModeScore = as.numeric(ModeScore))
+}
+
+r2_bw3 <- read_and_calc("~/PARpipe/YTHDF2_rep2/SRR944647.allclusters.bed")
+r3_bw3 <- read_and_calc("~/PARpipe/YTHDF2_rep3/SRR944648.allclusters.bed")
+
+```
+
+Calculate IDR
+```{r}
+calc_IDR <- function(dataset1, dataset2, Score, gap) {
+  
+  p1 <- GRanges(dataset1$Chromosome, IRanges(dataset1$Start, dataset1$End), score=pull(dataset1[Score]))
+  p2 <- GRanges(dataset2$Chromosome, IRanges(dataset2$Start, dataset2$End), score=pull(dataset2[Score]))
+  p1 <- keepStandardChromosomes(p1, pruning.mode="coarse")
+  p2 <- keepStandardChromosomes(p2, pruning.mode="coarse")
+
+  overlaps <- findOverlaps(p1, p2, maxgap = gap)
+
+ # print(paste("Gap used for overlap: ", gap))
+  #print(paste("Number of peaks in dataset1: ", length(p1)))
+  #print(paste("Number of peaks in dataset2: ", length(p2)))
+ # print(paste("Number overlapped peaks: ", length(overlaps)))
+
+  overlaps <- as_tibble(overlaps)
+
+  multi_overlaps <- overlaps %>%
+    mutate(queryScore = p1$score[.$queryHits],
+          subjectScore = p2$score[.$subjectHits]) %>%
+    group_by(queryHits) %>%
+    mutate(subjectMax = min(subjectScore)) %>%
+    ungroup() %>%
+    group_by(subjectHits) %>%
+    mutate(queryMax = min(queryScore)) %>%
+    mutate(topHit = case_when(
+      queryScore == queryMax & subjectScore == subjectMax ~ TRUE,
+      TRUE ~ FALSE
+  ))
+
+  overlaps_max <- multi_overlaps %>%
+    filter(topHit == TRUE)
+
+  #print(paste("Number of peaks breaking ties by max value: ", n_distinct(overlaps_max$queryHits)))
+
+  overlaps_df <- as.data.frame(overlaps)
+  overlaps_df <- overlaps_df[!duplicated(overlaps_df$queryHits) & !duplicated(overlaps_df$subjectHits),]
+  #print(paste("Number of final peaks using old-method: ", n_distinct(overlaps_df)))
+
+  y1 <- p1$score[overlaps_max$queryHits]
+  y2 <- p2$score[overlaps_max$subjectHits]
+  
+
+  #IDR calculation
+  #print("Calculating IDR")
+
+  dat <- cbind(y1, y2)
+  system.time({
+    res <- est.IDR(dat, mu=3, sigma=1, rho=.9, p=.5)
+  })
+
+  df <- data.frame(rep1=dat[,1],rep2=dat[,2],
+                 rank1=rank(-dat[,1]),rank2=rank(-dat[,2]),
+                 idr=res$idr)
+
+  #print(paste("Number of peaks with IDR < 0.25: ", df %>% filter(idr < 0.25) %>% n_distinct))
+
+  return(df)
+}
+
+
+
+plot_cutoff <- function(df, cutoff){
+  df %>%
+    mutate(met_cutoff = case_when(
+      idr < cutoff ~ TRUE,
+      TRUE ~ FALSE
+    )) %>%
+    ggplot(aes(rank1, rank2, col = met_cutoff)) +
+    scale_color_brewer(palette="Set1") +
+    geom_point(size = 0.1, alpha = 0.5)+
+    labs(title = paste("Points colored by IDR < ", cutoff))
+}
+
+#calculate idr
+
+df1_idr <- calc_IDR(r2_bw3, r3_bw3, "ModeScore", gap = 1)
+
+#plot
+plot_cutoff(df1_idr, 0.25)
+print(paste("Number of clusters in rep 1:", n_distinct(r2_bw3)))
+print(paste("Number of clusters in rep 2:", n_distinct(r3_bw3)))
+print(paste("Number of overlapping clusters:", n_distinct(df1_idr)))
+print(paste("Number of clusters passing idr threshold:", n_distinct(df1_idr %>% filter(idr < 0.25))))
+```
+
+Join idr results and write files
+```{r}
+
+r3_idr <- df1_idr %>%
+  left_join(r3_bw3, by = c("rep2" = "ModeScore")) %>%
+  mutate(idrSig = idr < 0.25)
+
+r3_idr %>%
+  select(Chromosome, Start, End, Gene, ModeScore = rep2, Strand) %>%
+  write_tsv("~/PARpipe/RCAS_files/df1_modescore.bed", col_names = FALSE)
+
+r3_idr %>%
+  select(Chromosome, Start, End, Gene, idr, Strand) %>%
+  write_tsv("~/PARpipe/RCAS_files/df1_idr.bed", col_names = FALSE)
+
+r3_idr %>%
+  filter(idrSig == TRUE) %>%
+  select(Chromosome, Start, End, Gene, ModeScore = rep2, Strand) %>%
+  write_tsv("~/PARpipe/RCAS_files/df1_idrsig.bed", col_names = FALSE)
+
+r3_idr %>%
+  filter(idrSig != TRUE) %>%
+  select(Chromosome, Start, End, Gene, ModeScore = rep2, Strand) %>%
+  write_tsv("~/PARpipe/RCAS_files/df1_idrnonsig.bed", col_names = FALSE)
+
+```
+
+
+# Test overlaps with m6A dataset and distribution of scores
+```{r}
+m6A <- read_tsv("~/PARpipe/RCAS_files/m6A_peaks_hg19.bed", col_names = FALSE)
+
+r3_idr_sig <- r3_idr %>%
+  filter(idrSig == TRUE)
+
+m6A_g <- GRanges(m6A$X1, IRanges(m6A$X2, m6A$X3))
+df2_sig_g <- GRanges(r3_idr_sig$Chromosome, IRanges(r3_idr_sig$Start, r3_idr_sig$End), score = r3_idr_sig$rep1, name = r3_idr_sig$Gene)
+m6A_g <- keepStandardChromosomes(m6A_g, pruning.mode="coarse")
+df2_sig_g <- keepStandardChromosomes(df2_sig_g, pruning.mode="coarse")
+  
+
+ov_m6A <- as.data.frame(findOverlaps(m6A_g, df2_sig_g))
+
+df2_m6A <- as.data.frame(df2_sig_g[ov_m6A$subjectHits])
+
+r3_idr_m6A <- r3_idr_sig %>%
+  mutate(m6A = case_when(Gene %in% df2_m6A$name ~ "m6A",
+                         TRUE ~ "non-m6A"))
+```
+
+## Plot distributions
+```{r}
+ggplot(r3_idr_m6A, aes(x = rep1, group = m6A, color = m6A)) +
+  geom_density() +
+  labs(title = "Distribution of Mode Scores in Replicate 1, based on m6A")
+
+ggplot(r3_idr_m6A, aes(x = rep2, group = m6A, color = m6A)) +
+  geom_density() +
+  labs(title = "Distribution of Mode Scores in Replicate 2, based on m6A")
+
+ggplot(r3_idr_m6A, aes(x = T2Cfraction, group = m6A, color = m6A)) +
+  geom_density() +
+  labs(title = "Distribution of T2C Fraction, based on m6A")
+
+ggplot(r3_idr_m6A, aes(x = ConversionSpecificity, group = m6A, color = m6A)) +
+  geom_density() +
+  labs(title = "Distribution of Conversion Specificity, based on m6A")
+
+ggplot(r3_idr_m6A, aes(x = log10(T2C_1), group = m6A, color = m6A)) +
+  geom_density() +
+  labs(title = "Distribution of T2C Count, based on m6A")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+

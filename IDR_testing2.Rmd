@@ -1,0 +1,333 @@
+---
+title: "IDR_testing2"
+author: "Sarah Arcos"
+date: "12/12/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#install.packages("dplyr")
+#install.packages("readr")
+#install.packages("idr")
+library(dplyr)
+library(readr)
+library(magrittr)
+library(idr)
+library(tidyr)
+library(purrr)
+
+
+# if (!requireNamespace("BiocManager", quietly = TRUE))
+#     install.packages("BiocManager")
+# 
+# BiocManager::install("GenomicRanges")
+
+library(GenomicRanges)
+library(ggplot2)
+```
+
+## Look at intersection of readbed and clusterbed to manually calculate T2Cfraction and ConversionSpecificity
+bedtools command: intersectBed -a SRR944648.readbed -b SRR944648.clusterbed -wao -s > SRR944648.allclusters.bed
+
+```{r}
+r2 <- read_tsv("~/PARpipe/YTHDF2_rep2/SRR944647.allclusters.bed", col_names = FALSE) %>%
+  select(X5, "Chromosome" = X7, "Start" = X8, "End" = X9, X11, "Strand" = X12) %>%
+  filter(X11 != "-1") %>%
+  separate(X5, sep = ",", into = c("Location", "ReadCount", "EndBase")) %>%
+  separate(X11, sep = ",", into = c("AlignedTo", "Name", "Gene", "Seq", "Reads", "ModeLocation", "ModeScore", "ConLocCount", "ConEvCount", "NonConEvCount", "Annotation"))
+
+r2_calc <- r2 %>%
+  group_by(Gene, Location) %>%
+  mutate(TotalReads = sum(as.numeric(ReadCount))) %>%
+  select(-ReadCount, -EndBase) %>%
+  unique() %>%
+  spread(Location, TotalReads, fill = 0) %>%
+  mutate(T2Cfraction = T2C_1 / (T2C_1 + Other_1 + None),
+         ConversionSpecificity = log10(T2C_1 / (Other_1 + 1)),
+         ModeScore = as.numeric(ModeScore))
+
+r3 <- read_tsv("~/PARpipe/YTHDF2_rep3/SRR944648.allclusters.bed", col_names = FALSE) %>%
+  select(X5, "Chromosome" = X7, "Start" = X8, "End" = X9, X11, "Strand" = X12) %>%
+  filter(X11 != "-1") %>%
+  separate(X5, sep = ",", into = c("Location", "ReadCount", "EndBase")) %>%
+  separate(X11, sep = ",", into = c("AlignedTo", "Name", "Gene", "Seq", "Reads", "ModeLocation", "ModeScore", "ConLocCount", "ConEvCount", "NonConEvCount", "Annotation"))
+
+r3_calc <- r3 %>%
+  group_by(Gene, Location) %>%
+  mutate(TotalReads = sum(as.numeric(ReadCount))) %>%
+  select(-ReadCount, -EndBase) %>%
+  unique() %>%
+  spread(Location, TotalReads, fill = 0) %>%
+  mutate(T2Cfraction = T2C_1 / (T2C_1 + Other_1 + None),
+         ConversionSpecificity = log10(T2C_1 / (Other_1 + 1)),
+         ModeScore = as.numeric(ModeScore))
+
+```
+
+## Check IDR performance with different scores from (completely unfiltered) PARalyzer output.
+
+```{r}
+
+plotScore <- function(dataset1, dataset2, Score, gap) {
+  
+  p1 <- GRanges(dataset1$Chromosome, IRanges(dataset1$Start, dataset1$End), score=pull(dataset1[Score]))
+  p2 <- GRanges(dataset2$Chromosome, IRanges(dataset2$Start, dataset2$End), score=pull(dataset2[Score]))
+  p1 <- keepStandardChromosomes(p1, pruning.mode="coarse")
+  p2 <- keepStandardChromosomes(p2, pruning.mode="coarse")
+
+  overlaps <- findOverlaps(p1, p2, maxgap = gap)
+
+ # print(paste("Gap used for overlap: ", gap))
+  #print(paste("Number of peaks in dataset1: ", length(p1)))
+  #print(paste("Number of peaks in dataset2: ", length(p2)))
+ # print(paste("Number overlapped peaks: ", length(overlaps)))
+
+  overlaps <- as_tibble(overlaps)
+
+  multi_overlaps <- overlaps %>%
+    mutate(queryScore = p1$score[.$queryHits],
+          subjectScore = p2$score[.$subjectHits]) %>%
+    group_by(queryHits) %>%
+    mutate(subjectMax = max(subjectScore)) %>%
+    ungroup() %>%
+    group_by(subjectHits) %>%
+    mutate(queryMax = max(queryScore)) %>%
+    mutate(topHit = case_when(
+      queryScore == queryMax & subjectScore == subjectMax ~ TRUE,
+      TRUE ~ FALSE
+  ))
+
+  overlaps_max <- multi_overlaps %>%
+    filter(topHit == TRUE)
+
+  #print(paste("Number of peaks breaking ties by max value: ", n_distinct(overlaps_max$queryHits)))
+
+  overlaps_df <- as.data.frame(overlaps)
+  overlaps_df <- overlaps_df[!duplicated(overlaps_df$queryHits) & !duplicated(overlaps_df$subjectHits),]
+  #print(paste("Number of final peaks using old-method: ", n_distinct(overlaps_df)))
+
+  y1 <- p1$score[overlaps_max$queryHits]
+  y2 <- p2$score[overlaps_max$subjectHits]
+  
+
+  #IDR calculation
+  #print("Calculating IDR")
+
+  dat <- cbind(y1, y2)
+  system.time({
+    res <- est.IDR(dat, mu=3, sigma=1, rho=.9, p=.5)
+  })
+
+  df <- data.frame(rep1=dat[,1],rep2=dat[,2],
+                 rank1=rank(-dat[,1]),rank2=rank(-dat[,2]),
+                 idr=res$idr)
+
+  #print(paste("Number of peaks with IDR < 0.25: ", df %>% filter(idr < 0.25) %>% n_distinct))
+
+  return(df)
+}
+
+#r2_r3 <- plotScore(r2_calc, r3_calc, "ModeScore", gap = 6)
+```
+
+```{r, message = FALSE, fig.width = 12}
+gaps <- c(-1:20)
+names(gaps) <- c(-1:20)
+
+gap_tester <- function(gap) {
+  df <- plotScore(r2_calc, r3_calc, "ModeScore", gap)
+  summary_df <- tibble(
+    TotalPeaks = n_distinct(df),
+    SigPeaks = df %>% filter(idr < 0.25) %>% n_distinct
+  )
+
+  return(summary_df)
+}
+
+gap_results <- map_dfr(gaps, gap_tester, .id = "Gap")
+
+
+gap_results_plot <- gap_results %>%
+  gather(PeakType, Count, -Gap) %>%
+  mutate(Gap = as.numeric(Gap))
+
+ggplot(gap_results_plot, aes(x = Gap, y = Count, fill = PeakType, group = PeakType)) +
+  geom_col(position = position_dodge()) +
+  geom_text(aes(label = Count), size = 2.5, position = position_dodge(width = 0.9), vjust = -0.5) +
+  scale_x_continuous(breaks = c(-1:20))
+
+ggplot(gap_results, aes(x = TotalPeaks, y = SigPeaks)) +
+  geom_point()
+```
+
+## Try using min score to break ties
+
+```{r}
+plotScoreMin <- function(dataset1, dataset2, Score, gap) {
+  
+  p1 <- GRanges(dataset1$Chromosome, IRanges(dataset1$Start, dataset1$End), score=pull(dataset1[Score]))
+  p2 <- GRanges(dataset2$Chromosome, IRanges(dataset2$Start, dataset2$End), score=pull(dataset2[Score]))
+  p1 <- keepStandardChromosomes(p1, pruning.mode="coarse")
+  p2 <- keepStandardChromosomes(p2, pruning.mode="coarse")
+
+  overlaps <- findOverlaps(p1, p2, maxgap = gap)
+
+  #print(paste("Gap used for overlap: ", gap))
+  #print(paste("Number of peaks in dataset1: ", length(p1)))
+  #print(paste("Number of peaks in dataset2: ", length(p2)))
+  #print(paste("Number overlapped peaks: ", length(overlaps)))
+
+  overlaps <- as_tibble(overlaps)
+
+  multi_overlaps <- overlaps %>%
+    mutate(queryScore = p1$score[.$queryHits],
+          subjectScore = p2$score[.$subjectHits]) %>%
+    group_by(queryHits) %>%
+    mutate(subjectMax = min(subjectScore)) %>%
+    ungroup() %>%
+    group_by(subjectHits) %>%
+    mutate(queryMax = min(queryScore)) %>%
+    mutate(topHit = case_when(
+      queryScore == queryMax & subjectScore == subjectMax ~ TRUE,
+      TRUE ~ FALSE
+  ))
+
+  overlaps_max <- multi_overlaps %>%
+    filter(topHit == TRUE)
+
+  #print(paste("Number of peaks breaking ties by max value: ", n_distinct(overlaps_max$queryHits)))
+
+  overlaps_df <- as.data.frame(overlaps)
+  overlaps_df <- overlaps_df[!duplicated(overlaps_df$queryHits) & !duplicated(overlaps_df$subjectHits),]
+  #print(paste("Number of final peaks using old-method: ", n_distinct(overlaps_df)))
+
+  y1 <- p1$score[overlaps_max$queryHits]
+  y2 <- p2$score[overlaps_max$subjectHits]
+  
+
+  #IDR calculation
+ # print("Calculating IDR")
+
+  dat <- cbind(y1, y2)
+  system.time({
+    res <- est.IDR(dat, mu=3, sigma=1, rho=.9, p=.5)
+  })
+
+  df <- data.frame(rep1=dat[,1],rep2=dat[,2],
+                 rank1=rank(-dat[,1]),rank2=rank(-dat[,2]),
+                 idr=res$idr)
+
+  #print(paste("Number of peaks with IDR < 0.25: ", df %>% filter(idr < 0.25) %>% n_distinct))
+
+  return(df)
+}
+
+#r2_r3_min <- plotScore(r2_calc, r3_calc, "ModeScore", gap = 6)
+
+```
+
+
+```{r, message = FALSE, fig.width = 12}
+
+gap_tester_min <- function(gap) {
+  df <- plotScoreMin(r2_calc, r3_calc, "ModeScore", gap)
+  summary_df <- tibble(
+    TotalPeaks = n_distinct(df),
+    SigPeaks = df %>% filter(idr < 0.25) %>% n_distinct
+  )
+
+  return(summary_df)
+}
+
+gap_results_min <- map_dfr(gaps, gap_tester_min, .id = "Gap")
+
+
+gap_results_plot_min <- gap_results_min %>%
+  gather(PeakType, Count, -Gap) %>%
+  mutate(Gap = as.numeric(Gap))
+
+ggplot(gap_results_plot_min, aes(x = Gap, y = Count, fill = PeakType, group = PeakType)) +
+  geom_col(position = position_dodge()) +
+  geom_text(aes(label = Count), size = 2.5, position = position_dodge(width = 0.9), vjust = -0.5) +
+  scale_x_continuous(breaks = c(-1:20))
+
+ggplot(gap_results_min, aes(x = TotalPeaks, y = SigPeaks)) +
+  geom_point()
+```
+
+
+
+## Visualize distribution of overlap widths/gap widths
+ - Limit analysis to gaps < 100
+```{r}
+
+p1 <- GRanges(r2_calc$Chromosome, IRanges(r2_calc$Start, r2_calc$End), score=r2_calc$ModeScore)
+p2 <- GRanges(r3_calc$Chromosome, IRanges(r3_calc$Start, r3_calc$End), score=r3_calc$ModeScore)
+p1 <- keepStandardChromosomes(p1, pruning.mode="coarse")
+p2 <- keepStandardChromosomes(p2, pruning.mode="coarse")
+
+overlap_indices <- findOverlaps(p1, p2, maxgap = 100)
+
+overlap_ranges <- pintersect(p1[queryHits(overlap_indices)], p2[subjectHits(overlap_indices)])
+
+overlap_width <- width(overlap_ranges)
+p1_width <- width(p1[queryHits(overlap_indices)])
+p2_width <- width(p2[subjectHits(overlap_indices)])
+
+gap_ranges <- pgap(p1[queryHits(overlap_indices)], p2[subjectHits(overlap_indices)])
+
+gap_widths <- width(gap_ranges)
+
+```
+
+Density plot of all overlap widths (<= 0)
+```{r}
+plot(density(overlap_width))
+```
+
+Now using log-transformed values
+```{r}
+plot(density(log(overlap_width)))
+```
+
+Now using non-transformed values but just those with overlap > 0 (ie, they actually overlap)
+```{r}
+hist(overlap_width[overlap_width > 0], breaks = 100)
+```
+
+Focus in to just values 0 <-> 100:
+```{r}
+hist(overlap_width[overlap_width > 0 & overlap_width < 100], breaks = 100)
+```
+
+Now to look at the __gaps__
+```{r}
+hist(gap_widths, breaks = 100)
+```
+
+Again, remove gaps < 0
+```{r}
+hist(gap_widths[gap_widths > 0], breaks = 100)
+```
+
+
+Now look at gap and overlap (transform overlap into negative values)
+
+```{r, fig.width = 10}
+  
+overlap_neg <- -1 * overlap_width
+
+gap_overlap <- c(overlap_neg, gap_widths)
+
+hist(gap_overlap, breaks = 100)
+
+hist(gap_overlap[gap_overlap > -50 & gap_overlap < 50 & gap_overlap != 0], breaks = 100)
+```
+
+## Conclusion:
+
+Should use maxgap = 1 setting for findOverlaps function. Increasing gap width does not seem to add significantly more peaks. Only using overlap would remove about 500 peaks, and it seems that these peaks are relevant (?). 
+
+

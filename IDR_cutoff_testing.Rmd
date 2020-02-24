@@ -1,0 +1,419 @@
+---
+title: "IDR_cutoff_testing"
+author: "Sarah Arcos"
+date: "12/12/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#install.packages("dplyr")
+#install.packages("readr")
+#install.packages("idr")
+library(dplyr)
+library(readr)
+library(magrittr)
+library(idr)
+library(tidyr)
+library(purrr)
+library(RColorBrewer)
+
+# if (!requireNamespace("BiocManager", quietly = TRUE))
+#     install.packages("BiocManager")
+# 
+# BiocManager::install("GenomicRanges")
+
+library(GenomicRanges)
+library(ggplot2)
+library(stringr)
+```
+
+## Read in files and calculate ConversionSpecificity and T2Cfraction
+```{r}
+r2 <- read_tsv("~/PARpipe/YTHDF2_rep2/SRR944647.allclusters.bed", col_names = FALSE) %>%
+  select(X5, "Chromosome" = X7, "Start" = X8, "End" = X9, X11, "Strand" = X12) %>%
+  filter(X11 != "-1") %>%
+  separate(X5, sep = ",", into = c("Location", "ReadCount", "EndBase")) %>%
+  separate(X11, sep = ",", into = c("AlignedTo", "Name", "Gene", "Seq", "Reads", "ModeLocation", "ModeScore", "ConLocCount", "ConEvCount", "NonConEvCount", "Annotation"))
+
+r2_calc <- r2 %>%
+  group_by(Gene, Location) %>%
+  mutate(TotalReads = sum(as.numeric(ReadCount))) %>%
+  select(-ReadCount, -EndBase) %>%
+  unique() %>%
+  spread(Location, TotalReads, fill = 0) %>%
+  mutate(T2Cfraction = T2C_1 / (T2C_1 + Other_1 + None),
+         ConversionSpecificity = log10(T2C_1 / (Other_1 + 1)),
+         ModeScore = as.numeric(ModeScore))
+
+r3 <- read_tsv("~/PARpipe/YTHDF2_rep3/SRR944648.allclusters.bed", col_names = FALSE) %>%
+  select(X5, "Chromosome" = X7, "Start" = X8, "End" = X9, X11, "Strand" = X12) %>%
+  filter(X11 != "-1") %>%
+  separate(X5, sep = ",", into = c("Location", "ReadCount", "EndBase")) %>%
+  separate(X11, sep = ",", into = c("AlignedTo", "Name", "Gene", "Seq", "Reads", "ModeLocation", "ModeScore", "ConLocCount", "ConEvCount", "NonConEvCount", "Annotation"))
+
+r3_calc <- r3 %>%
+  group_by(Gene, Location) %>%
+  mutate(TotalReads = sum(as.numeric(ReadCount))) %>%
+  select(-ReadCount, -EndBase) %>%
+  unique() %>%
+  spread(Location, TotalReads, fill = 0) %>%
+  mutate(T2Cfraction = T2C_1 / (T2C_1 + Other_1 + None),
+         ConversionSpecificity = log10(T2C_1 / (Other_1 + 1)),
+         ModeScore = as.numeric(ModeScore))
+
+```
+
+
+## Calculate IDR (function from IDR_testing2.rmd). Use min as tie-breaker
+```{r}
+calc_IDR <- function(dataset1, dataset2, Score, gap) {
+  
+  p1 <- GRanges(dataset1$Chromosome, IRanges(dataset1$Start, dataset1$End), score=pull(dataset1[Score]))
+  p2 <- GRanges(dataset2$Chromosome, IRanges(dataset2$Start, dataset2$End), score=pull(dataset2[Score]))
+  p1 <- keepStandardChromosomes(p1, pruning.mode="coarse")
+  p2 <- keepStandardChromosomes(p2, pruning.mode="coarse")
+
+  overlaps <- findOverlaps(p1, p2, maxgap = gap)
+
+ # print(paste("Gap used for overlap: ", gap))
+  #print(paste("Number of peaks in dataset1: ", length(p1)))
+  #print(paste("Number of peaks in dataset2: ", length(p2)))
+ # print(paste("Number overlapped peaks: ", length(overlaps)))
+
+  overlaps <- as_tibble(overlaps)
+
+  multi_overlaps <- overlaps %>%
+    mutate(queryScore = p1$score[.$queryHits],
+          subjectScore = p2$score[.$subjectHits]) %>%
+    group_by(queryHits) %>%
+    mutate(subjectMax = min(subjectScore)) %>%
+    ungroup() %>%
+    group_by(subjectHits) %>%
+    mutate(queryMax = min(queryScore)) %>%
+    mutate(topHit = case_when(
+      queryScore == queryMax & subjectScore == subjectMax ~ TRUE,
+      TRUE ~ FALSE
+  ))
+
+  overlaps_max <- multi_overlaps %>%
+    filter(topHit == TRUE)
+
+  #print(paste("Number of peaks breaking ties by max value: ", n_distinct(overlaps_max$queryHits)))
+
+  overlaps_df <- as.data.frame(overlaps)
+  overlaps_df <- overlaps_df[!duplicated(overlaps_df$queryHits) & !duplicated(overlaps_df$subjectHits),]
+  #print(paste("Number of final peaks using old-method: ", n_distinct(overlaps_df)))
+
+  y1 <- p1$score[overlaps_max$queryHits]
+  y2 <- p2$score[overlaps_max$subjectHits]
+  
+
+  #IDR calculation
+  #print("Calculating IDR")
+
+  dat <- cbind(y1, y2)
+  system.time({
+    res <- est.IDR(dat, mu=3, sigma=1, rho=.9, p=.5)
+  })
+
+  df <- data.frame(rep1=dat[,1],rep2=dat[,2],
+                 rank1=rank(-dat[,1]),rank2=rank(-dat[,2]),
+                 idr=res$idr)
+
+  #print(paste("Number of peaks with IDR < 0.25: ", df %>% filter(idr < 0.25) %>% n_distinct))
+
+  return(df)
+}
+```
+
+
+## Calculate IDR
+
+```{r}
+idr_gap <- calc_IDR(r2_calc, r3_calc, "ModeScore", gap = 1)
+```
+
+## Visualize
+
+```{r}
+ggplot(idr_gap, aes(rep1,rep2,col=idr)) + geom_point(size = 0.3, alpha = 0.5)
+
+ggplot(idr_gap, aes(rank1,rank2,col=idr)) + geom_point(size = 0.3, alpha = 0.5)
+
+```
+
+## Use rank plot to see different cutoff values (bin and color)
+
+```{r}
+
+plot_cutoff <- function(df, cutoff){
+  df %>%
+    mutate(met_cutoff = case_when(
+      idr < cutoff ~ TRUE,
+      TRUE ~ FALSE
+    )) %>%
+    ggplot(aes(rank1, rank2, col = met_cutoff)) +
+    scale_color_brewer(palette="Set1") +
+    geom_point(size = 0.1, alpha = 0.5)+
+    labs(title = paste("Points colored by IDR < ", cutoff))
+}
+
+plot_cutoff(idr_gap, 0.01)
+plot_cutoff(idr_gap, 0.02)
+plot_cutoff(idr_gap, 0.05)
+plot_cutoff(idr_gap, 0.10)
+plot_cutoff(idr_gap, 0.15)
+plot_cutoff(idr_gap, 0.20)
+plot_cutoff(idr_gap, 0.25)
+plot_cutoff(idr_gap, 0.50)
+
+
+```
+
+## Plot distribution of T2Cfraction based on idr cutoff < 0.25
+
+```{r}
+#first see if there are any ties for modescore
+
+print(paste("Is each ModeScore unique?:", (n_distinct(idr_gap) == n_distinct(idr_gap$rep1) & n_distinct(idr_gap$rep2) == n_distinct(idr_gap$rep1))))
+
+#Now we can join by ModeScore to retrieve T2Cfraction and IDR in the same df
+#Do each replicate separately at first
+
+r2_idr <- idr_gap %>%
+  left_join(r2_calc, by = c("rep1" = "ModeScore")) %>%
+  mutate(idrSig = idr < 0.25)
+
+ggplot(r2_idr, aes(T2Cfraction)) +
+  geom_histogram(binwidth = 0.005) +
+  facet_wrap(~idrSig, nrow = 2)
+
+ggplot(r2_idr, aes(T2Cfraction, color = idrSig)) +
+  geom_density()
+
+ggplot(r2_idr, aes(ConversionSpecificity, color = idrSig)) +
+  geom_density()
+
+ggplot(r2_idr, aes(ConversionSpecificity)) +
+  geom_histogram(binwidth = 0.05) +
+  facet_wrap(~idrSig, nrow = 2)
+
+
+ggplot(r2_idr, aes(log10(T2C_1), color = idrSig)) +
+  geom_density()
+
+ggplot(r2_idr, aes(log10(T2C_1))) +
+  geom_histogram(binwidth = 0.1) +
+  facet_wrap(~idrSig, nrow = 2)
+
+
+
+```
+
+Rep2
+
+```{r}
+r3_idr <- idr_gap %>%
+  left_join(r3_calc, by = c("rep2" = "ModeScore")) %>%
+  mutate(idrSig = idr < 0.25)
+
+ggplot(r3_idr, aes(T2Cfraction)) +
+  geom_histogram(binwidth = 0.005) +
+  facet_wrap(~idrSig, nrow = 2)
+
+ggplot(r3_idr, aes(T2Cfraction, color = idrSig)) +
+  geom_density()
+
+ggplot(r3_idr, aes(ConversionSpecificity, color = idrSig)) +
+  geom_density()
+
+ggplot(r3_idr, aes(ConversionSpecificity)) +
+  geom_histogram(binwidth = 0.05) +
+  facet_wrap(~idrSig, nrow = 2)
+
+
+ggplot(r3_idr, aes(log10(T2C_1), color = idrSig)) +
+  geom_density()
+
+ggplot(r3_idr, aes(log10(T2C_1))) +
+  geom_histogram(binwidth = 0.1) +
+  facet_wrap(~idrSig, nrow = 2)
+
+```
+
+## Count motif instances
+```{r}
+
+# r2_motif <- r2_idr %>%
+#   mutate(motif = str_detect(Seq, "AAACA|AAACC|AAACU|AGACA|AGACC|AGACU|GAACA|GAACC|GAACU|GGACA|GGACC|GGACU"))
+
+r2_motif <- r2_idr %>%
+  mutate(motif = str_detect(Seq, "GAC|AAC"))
+
+#plot full counts
+ggplot(r2_motif, aes(x = motif)) +
+  geom_bar()
+
+r2_motif %>%
+  #filter(idrSig) %>%
+  ggplot(aes(x = idrSig, fill = motif)) +
+  geom_bar()
+
+r3_motif <- r3_idr %>%
+  mutate(motif = str_detect(Seq, "AAACA|AAACC|AAACU|AGACA|AGACC|AGACU|GAACA|GAACC|GAACU|GGACA|GGACC|GGACU"))
+
+#plot full counts
+ggplot(r3_motif, aes(x = motif)) +
+  geom_bar()
+
+r3_motif %>%
+  #filter(idrSig) %>%
+  ggplot(aes(x = idrSig, fill = motif)) +
+  geom_bar(position = "fill")
+```
+
+
+
+
+## Plot ModeScore and IDR
+
+```{r}
+idr_gap %>% mutate(idrSig = idr < 0.25) %>%
+  ggplot(aes(x = rep1, y = rep2, color = idrSig)) +
+  geom_point(size = 0.1, alpha = 0.5)
+```
+
+
+
+
+
+
+## With Katie's data
+
+```{r}
+k1 <- read_tsv("~/katie_results/untrimmed1.allclusters.bed", col_names = FALSE) %>%
+  select(X5, "Chromosome" = X7, "Start" = X8, "End" = X9, X11, "Strand" = X12) %>%
+  filter(X11 != "-1") %>%
+  separate(X5, sep = ",", into = c("Location", "ReadCount", "EndBase")) %>%
+  separate(X11, sep = ",", into = c("AlignedTo", "Name", "Gene", "Seq", "Reads", "ModeLocation", "ModeScore", "ConLocCount", "ConEvCount", "NonConEvCount", "Annotation"))
+
+
+#Katies data doesn't have "Other_1" so remove
+#Also check conversionspecificity in her output to see if the same as T2Cfraction
+k1_calc <- k1 %>%
+  group_by(Gene, Location) %>%
+  mutate(TotalReads = sum(as.numeric(ReadCount))) %>%
+  select(-ReadCount, -EndBase) %>%
+  unique() %>%
+  spread(Location, TotalReads, fill = 0) %>%
+  mutate(T2Cfraction = T2C_1 / (T2C_1 + None),
+         ConversionSpecificity = log10(T2C_1 / (1)),
+         ModeScore = as.numeric(ModeScore))
+
+k2 <- read_tsv("~/katie_results/merged.allclusters.bed", col_names = FALSE) %>%
+  select(X5, "Chromosome" = X7, "Start" = X8, "End" = X9, X11, "Strand" = X12) %>%
+  filter(X11 != "-1") %>%
+  separate(X5, sep = ",", into = c("Location", "ReadCount", "EndBase")) %>%
+  separate(X11, sep = ",", into = c("AlignedTo", "Name", "Gene", "Seq", "Reads", "ModeLocation", "ModeScore", "ConLocCount", "ConEvCount", "NonConEvCount", "Annotation"))
+
+k2_calc <- k2 %>%
+  group_by(Gene, Location) %>%
+  mutate(TotalReads = sum(as.numeric(ReadCount))) %>%
+  select(-ReadCount, -EndBase) %>%
+  unique() %>%
+  spread(Location, TotalReads, fill = 0) %>%
+  mutate(T2Cfraction = T2C_1 / (T2C_1 + None),
+         ConversionSpecificity = log10(T2C_1 / (1)),
+         ModeScore = as.numeric(ModeScore))
+
+#calculate idr
+
+katie_idr <- calc_IDR(k1_calc, k2_calc, "ModeScore", gap = 1)
+
+#plot
+plot_cutoff(katie_idr, 0.25)
+print(paste("Number of clusters in rep 1:", n_distinct(k1_calc)))
+print(paste("Number of clusters in rep 2:", n_distinct(k2_calc)))
+print(paste("Number of overlapping clusters:", n_distinct(katie_idr)))
+print(paste("Number of clusters passing idr threshold:", n_distinct(katie_idr %>% filter(idr < 0.25))))
+
+
+katie_idr %>% mutate(idrSig = idr < 0.25) %>%
+  ggplot(aes(x = rep1, y = rep2, color = idrSig)) +
+  geom_point(size = 0.1, alpha = 0.5)
+```
+
+
+#kaite overlaps
+
+```{r}
+p1 <- GRanges(k1_calc$Chromosome, IRanges(k1_calc$Start, k1_calc$End), score=k1_calc$ModeScore)
+p2 <- GRanges(k2_calc$Chromosome, IRanges(k2_calc$Start, k2_calc$End), score=k2_calc$ModeScore)
+p1 <- keepStandardChromosomes(p1, pruning.mode="coarse")
+p2 <- keepStandardChromosomes(p2, pruning.mode="coarse")
+
+overlap_indices <- findOverlaps(p1, p2, maxgap = 100)
+
+overlap_ranges <- pintersect(p1[queryHits(overlap_indices)], p2[subjectHits(overlap_indices)])
+
+overlap_width <- width(overlap_ranges)
+p1_width <- width(p1[queryHits(overlap_indices)])
+p2_width <- width(p2[subjectHits(overlap_indices)])
+
+gap_ranges <- pgap(p1[queryHits(overlap_indices)], p2[subjectHits(overlap_indices)])
+
+gap_widths <- width(gap_ranges)
+
+
+
+
+overlap_neg <- -1 * overlap_width
+
+gap_overlap <- c(overlap_neg, gap_widths)
+
+hist(gap_overlap, breaks = 100)
+
+hist(gap_overlap[gap_overlap > -40 & gap_overlap < 40 & gap_overlap != 0], breaks = 80)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
