@@ -1,0 +1,218 @@
+---
+title: "T2CFraction_IDR_MC"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(GenomicRanges)
+library(idr)
+library(tidyverse)
+#install.packages("furrr")
+library(furrr)
+```
+
+#The goal of this markdown is to calculate the IDR for YTHDF2 PAR-CLIP based on T2CFraction. IDR is a rank-based statistic and the T2CFraction has many tied values. This markdown will explore a solution based on adding random noise to the data over 1000 iterations. An attempt will be made to parallelize due to runtime of IDR algorithm (~6 - 10 seconds)
+
+##Read in data and calculate T2CFraction
+```{r}
+read_and_calc <- function(infile) {
+  read_tsv(infile, col_names = FALSE) %>%
+    dplyr::select(X5, "Chromosome" = X7, "Start" = X8, "End" = X9, X11, "Strand" = X12) %>%
+    filter(X11 != "-1") %>%
+    separate(X5, sep = ",", into = c("Location", "ReadCount", "EndBase")) %>%
+    separate(X11, sep = ",", into = c("AlignedTo", "Name", "Gene", "Seq", "Reads", "ModeLocation", 
+                                      "ModeScore", "ConLocCount", "ConEvCount", "NonConEvCount", "Annotation")) %>%
+    group_by(Gene, Location) %>%
+    mutate(TotalReads = sum(as.numeric(ReadCount))) %>%
+    dplyr::select(-ReadCount, -EndBase) %>%
+    unique() %>%
+    spread(Location, TotalReads, fill = 0) %>%
+    mutate(T2Cfraction = T2C_1 / (T2C_1 + Other_1 + None),
+          ConversionSpecificity = log10(T2C_1 / (Other_1 + 1)),
+          ModeScore = as.numeric(ModeScore))
+}
+
+r2_bw3 <- read_and_calc("~/PARpipe/YTHDF2_rep2/SRR944647.allclusters.bed")
+r3_bw3 <- read_and_calc("~/PARpipe/YTHDF2_rep3/SRR944648.allclusters.bed")
+```
+
+##Find overlapping peaks
+```{r}
+p1 <- GRanges(r2_bw3$Chromosome, IRanges(r2_bw3$Start, r2_bw3$End), score=r2_bw3$T2Cfraction, name = r2_bw3$Gene)
+p2 <- GRanges(r3_bw3$Chromosome, IRanges(r3_bw3$Start, r3_bw3$End), score=r3_bw3$T2Cfraction, name = r3_bw3$Gene)
+p1 <- keepStandardChromosomes(p1, pruning.mode="coarse")
+p2 <- keepStandardChromosomes(p2, pruning.mode="coarse")
+
+overlaps <- findOverlaps(p1, p2, maxgap = 1)
+overlaps <- as_tibble(overlaps)
+
+multi_overlaps <- overlaps %>%
+  mutate(queryScore = p1$score[.$queryHits],
+        subjectScore = p2$score[.$subjectHits]) %>%
+  group_by(queryHits) %>%
+  mutate(subjectMax = min(subjectScore)) %>%
+  ungroup() %>%
+  group_by(subjectHits) %>%
+  mutate(queryMax = min(queryScore)) %>%
+  mutate(topHit = case_when(
+    queryScore == queryMax & subjectScore == subjectMax ~ TRUE,
+    TRUE ~ FALSE
+))
+
+overlaps_max <- multi_overlaps %>%
+  filter(topHit == TRUE)
+
+print(paste("Number of peaks breaking ties by max value: ", n_distinct(overlaps_max$queryHits)))
+
+#taking IDs from the bigger replicate
+d1 <- p1$score[overlaps_max$queryHits]
+d2 <- p2$score[overlaps_max$subjectHits]
+ids <- p2$name[overlaps_max$subjectHits]
+
+
+```
+
+
+##Function to calculate IDR
+```{r}
+#using variables defined above rather than inside function to simplify furrr call below
+idr_calc <- function(n){
+  #IDR calculation
+  dat <- cbind(jitter(d1), jitter(d2))
+  system.time({
+    res <- est.IDR(dat, mu=3, sigma=1, rho=.9, p=.5)
+  })
+# 
+#   df <- data.frame(rep1=dat[,1],rep2=dat[,2],
+#                    rank1=rank(-dat[,1]),rank2=rank(-dat[,2]),
+#                    id = ids,
+#                    idr=res$idr)
+  
+  df <- data.frame(id = ids,
+                   idr = res$idr)
+  return(df)
+}
+
+test <- idr_calc(1)
+
+test %>%
+    mutate(met_cutoff = case_when(
+      idr < 0.25 ~ TRUE,
+      TRUE ~ FALSE
+    )) %>%
+    ggplot(aes(rank1, rank2, col = met_cutoff)) +
+    scale_color_brewer(palette="Set1") +
+    geom_point(size = 0.1, alpha = 0.5)+
+    labs(title = paste("Points colored by IDR < 0.25"))
+
+test %>%
+    mutate(met_cutoff = case_when(
+      idr < 0.25 ~ TRUE,
+      TRUE ~ FALSE
+    )) %>%
+    ggplot(aes(rep1, rep2, col = met_cutoff)) +
+    scale_color_brewer(palette="Set1") +
+    geom_point(size = 0.1, alpha = 0.5)+
+    labs(title = paste("Points colored by IDR < 0.25"))
+
+```
+
+##Iterate 10 times using furrr
+```{r}
+plan(multiprocess)
+
+v <- 1:1000
+names(v) = 1000
+
+start_f <- Sys.time()
+t <- future_map_dfr(v, idr_calc, .id = "Iteration")
+end_f <- Sys.time()
+
+saveRDS(t, file = "idr_T2Cfraction_MC1000")
+```
+
+##Look at variance of idrs per gene
+```{r}
+n_distinct(t$id)
+
+t_summary <- t %>%
+  group_by(id) %>%
+  summarize(v = var(idr),
+            sd = sd(idr),
+            av = mean(idr))
+
+n_distinct(t_summary %>%
+             filter(av < 0.25))
+```
+
+##Trying a weird plotting idea
+```{r}
+t_summary %>%
+  ggplot(aes(x = reorder(id, av), y = av)) +
+    #geom_point(size = 0.001, alpha = 0.01) +
+    geom_errorbar(aes(ymin = av-sd, ymax = av+sd), color = "steelblue", alpha = 0.5) +
+    geom_hline(yintercept = 0.25, color = "red", size = 0.1, alpha = 0.5) +
+    scale_y_log10() +
+    theme_minimal() +
+    theme(axis.text.x = element_blank())
+
+
+```
+
+## Filter for values that have weirdly large SD
+```{r}
+sd_check <- t_summary %>%
+  filter(sd > av)
+
+t %>%
+  filter(id == "G107544.1") %>%
+  ggplot(aes(x = idr)) +
+  geom_density()
+
+ggplot(sd_check, aes(x = reorder(id, av), y = av)) +
+    geom_point(size = 0.1, alpha = 0.5) +
+    geom_errorbar(aes(ymin = av-sd, ymax = av+sd), color = "steelblue", alpha = 0.5) +
+    geom_hline(yintercept = 0.25, color = "red", size = 0.1, alpha = 0.5) +
+    scale_y_log10() +
+    theme_minimal() +
+    theme(axis.text.x = element_blank())
+```
+
+
+
+##Look at this gene: G107544.1
+```{r}
+df <- tibble(
+  r1 = d1,
+  r2 = d2,
+  name = ids
+) %>%
+  gather(replicate, t2c, -name)
+
+ggplot(df, aes(x = t2c, group = replicate, color = replicate)) +
+  geom_density()
+
+
+t_sig <- t_summary %>%
+  filter(av < 0.25)
+
+df %>%
+  mutate(sig = case_when(
+    name %in% t_sig$id ~ "Significant",
+    TRUE ~ "below cut-off"
+  )) %>%
+  ggplot(aes(x = t2c, group = replicate, color = replicate)) +
+  geom_density() +
+  facet_wrap(~sig, ncol = 1)
+
+
+```
+
+
+
+
+
+
+

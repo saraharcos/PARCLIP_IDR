@@ -11,19 +11,23 @@ knitr::opts_chunk$set(echo = TRUE)
 # if (!requireNamespace("BiocManager", quietly=TRUE)) install.packages("BiocManager")
 # BiocManager::install('RCAS')
 
-library(dplyr)
-library(readr)
-library(magrittr)
+# library(dplyr)
+# library(readr)
+# library(magrittr)
+# library(tidyr)
+# library(purrr)
+# library(RColorBrewer)
+# library(GenomicRanges)
+# library(ggplot2)
+# library(stringr)
+
+library(tidyverse)
 library(idr)
-library(tidyr)
-library(purrr)
-library(RColorBrewer)
-library(GenomicRanges)
-library(ggplot2)
-library(stringr)
+library(RCAS)
 ```
 
-So RCAS can't be installed because the R version is wrong, but I can't figure out how to update R on AWS. Temporary solution is to create necessary files, then scp them to my local machine. 
+Below is old solution. Fixed problem by setting up my own docker image based on rocker/tidyverse:latest that installs RCAS and idr packages.
+_So RCAS can't be installed because the R version is wrong, but I can't figure out how to update R on AWS. Temporary solution is to create necessary files, then scp them to my local machine._
 
 List of desired files:
  - IDR selected YTHDF dataset
@@ -33,14 +37,14 @@ List of desired files:
 ```{r}
 read_and_calc <- function(infile) {
   read_tsv(infile, col_names = FALSE) %>%
-    select(X5, "Chromosome" = X7, "Start" = X8, "End" = X9, X11, "Strand" = X12) %>%
+    dplyr::select(X5, "Chromosome" = X7, "Start" = X8, "End" = X9, X11, "Strand" = X12) %>%
     filter(X11 != "-1") %>%
     separate(X5, sep = ",", into = c("Location", "ReadCount", "EndBase")) %>%
     separate(X11, sep = ",", into = c("AlignedTo", "Name", "Gene", "Seq", "Reads", "ModeLocation", 
                                       "ModeScore", "ConLocCount", "ConEvCount", "NonConEvCount", "Annotation")) %>%
     group_by(Gene, Location) %>%
     mutate(TotalReads = sum(as.numeric(ReadCount))) %>%
-    select(-ReadCount, -EndBase) %>%
+    dplyr::select(-ReadCount, -EndBase) %>%
     unique() %>%
     spread(Location, TotalReads, fill = 0) %>%
     mutate(T2Cfraction = T2C_1 / (T2C_1 + Other_1 + None),
@@ -130,40 +134,40 @@ plot_cutoff <- function(df, cutoff){
 
 #calculate idr
 
-df1_idr <- calc_IDR(r2_bw3, r3_bw3, "ModeScore", gap = 1)
+df2_idr <- calc_IDR(r2_bw3, r3_bw3, "ModeScore", gap = 1)
 
 #plot
-plot_cutoff(df1_idr, 0.25)
+plot_cutoff(df2_idr, 0.25)
 print(paste("Number of clusters in rep 1:", n_distinct(r2_bw3)))
 print(paste("Number of clusters in rep 2:", n_distinct(r3_bw3)))
-print(paste("Number of overlapping clusters:", n_distinct(df1_idr)))
-print(paste("Number of clusters passing idr threshold:", n_distinct(df1_idr %>% filter(idr < 0.25))))
+print(paste("Number of overlapping clusters:", n_distinct(df2_idr)))
+print(paste("Number of clusters passing idr threshold:", n_distinct(df2_idr %>% filter(idr < 0.25))))
 ```
 
 Join idr results and write files
 ```{r}
 
-r3_idr <- df1_idr %>%
+r3_idr <- df2_idr %>%
   left_join(r3_bw3, by = c("rep2" = "ModeScore")) %>%
   mutate(idrSig = idr < 0.25)
-
-r3_idr %>%
-  select(Chromosome, Start, End, Gene, ModeScore = rep2, Strand) %>%
-  write_tsv("~/PARpipe/RCAS_files/df1_modescore.bed", col_names = FALSE)
-
-r3_idr %>%
-  select(Chromosome, Start, End, Gene, idr, Strand) %>%
-  write_tsv("~/PARpipe/RCAS_files/df1_idr.bed", col_names = FALSE)
-
-r3_idr %>%
-  filter(idrSig == TRUE) %>%
-  select(Chromosome, Start, End, Gene, ModeScore = rep2, Strand) %>%
-  write_tsv("~/PARpipe/RCAS_files/df1_idrsig.bed", col_names = FALSE)
-
-r3_idr %>%
-  filter(idrSig != TRUE) %>%
-  select(Chromosome, Start, End, Gene, ModeScore = rep2, Strand) %>%
-  write_tsv("~/PARpipe/RCAS_files/df1_idrnonsig.bed", col_names = FALSE)
+# 
+# r3_idr %>%
+#   select(Chromosome, Start, End, Gene, ModeScore = rep2, Strand) %>%
+#   write_tsv("~/PARpipe/RCAS_files/df1_modescore.bed", col_names = FALSE)
+# 
+# r3_idr %>%
+#   select(Chromosome, Start, End, Gene, idr, Strand) %>%
+#   write_tsv("~/PARpipe/RCAS_files/df1_idr.bed", col_names = FALSE)
+# 
+# r3_idr %>%
+#   filter(idrSig == TRUE) %>%
+#   select(Chromosome, Start, End, Gene, ModeScore = rep2, Strand) %>%
+#   write_tsv("~/PARpipe/RCAS_files/df1_idrsig.bed", col_names = FALSE)
+# 
+# r3_idr %>%
+#   filter(idrSig != TRUE) %>%
+#   select(Chromosome, Start, End, Gene, ModeScore = rep2, Strand) %>%
+#   write_tsv("~/PARpipe/RCAS_files/df1_idrnonsig.bed", col_names = FALSE)
 
 ```
 
