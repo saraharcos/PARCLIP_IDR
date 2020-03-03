@@ -24,8 +24,8 @@ cat "$infile" | shuf --random-source=<(get_seeded_random) | split -l ${nlines} -
 
 filename1=$(basename -- "$1")
 extension1="${filename1##*.}"
-filename1="${filename1%.*.*}"
+filename1="${filename1%.*}"
 
 
-mv ${infile}aa "$filename1"/pr1${filename1}.aligned.sam
-mv ${infile}ab "$filename1"/pr2${filename1}.aligned.sam
+mv ${infile}aa PARalyzer_results/"$filename1"/pr1${filename1}.sam
+mv ${infile}ab PARalyzer_results/"$filename1"/pr2${filename1}.sam

@@ -27,14 +27,14 @@ narrowPeak = data.frame(
   start = clusters$ClusterStart,
   end = clusters$ClusterEnd,
   name = clusters$ClusterID,
-  score = clusters$ConversionEventCount,
+  score = clusters$ModeScore,
   strand = clusters$Strand,
   signalValue = clusters$ModeScore,
   pValue = rep(-1, nrow(clusters)),
   qValue= rep(-1, nrow(clusters)),
-  peak = rep(-1, nrow(clusters)),
+  peak = clusters$ModeLocation,
   stringsAsFactors = FALSE
 )
 
-write.table(narrowPeak, args[2], col.names = FALSE, row.names = FALSE, sep = '\t')
+write.table(narrowPeak, args[2], col.names = FALSE, row.names = FALSE, sep = '\t', quote = FALSE)
 

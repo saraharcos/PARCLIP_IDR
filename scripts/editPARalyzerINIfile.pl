@@ -11,7 +11,7 @@ while(<USRFL>) {
 close USRFL;
 
 
-if ($inputFile =~ /\.aligned.sam/) {$library = $`};
+if ($inputFile =~ /\.sam/) {$library = $`};
 
 print "GENOME_2BIT_FILE=$bitfile";
 print "\n";
