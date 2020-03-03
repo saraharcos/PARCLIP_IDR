@@ -8,9 +8,12 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(GenomicRanges)
 library(idr)
-library(tidyverse)
+#library(tidyverse)
 #install.packages("furrr")
 library(furrr)
+library(tidyr)
+library(readr)
+library(dplyr)
 ```
 
 #The goal of this markdown is to calculate the IDR for YTHDF2 PAR-CLIP based on T2CFraction. IDR is a rank-based statistic and the T2CFraction has many tied values. This markdown will explore a solution based on adding random noise to the data over 1000 iterations. An attempt will be made to parallelize due to runtime of IDR algorithm (~6 - 10 seconds)
@@ -39,8 +42,10 @@ read_and_calc <- function(infile) {
 r2_bw3 <- read_and_calc("~/PARpipe/YTHDF2_rep2/SRR944647.allclusters.bed")
 r3_bw3 <- read_and_calc("~/PARpipe/YTHDF2_rep3/SRR944648.allclusters.bed")
 
-```
+saveRDS(r2_bw3, "~/PARCLIP_IDR/data/df2_rep2.rda")
+saveRDS(r3_bw3, "~/PARCLIP_IDR/data/df2_rep3.rda")
 
+```
 ##Find overlapping peaks
 ```{r}
 r2 <- GRanges(r2_bw3$Chromosome, IRanges(r2_bw3$Start, r2_bw3$End), score=r2_bw3$T2Cfraction, name = r2_bw3$Gene) %>%
