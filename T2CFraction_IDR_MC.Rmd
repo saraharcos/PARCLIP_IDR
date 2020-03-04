@@ -14,6 +14,7 @@ library(furrr)
 library(tidyr)
 library(readr)
 library(dplyr)
+library(ggplot2)
 ```
 
 #The goal of this markdown is to calculate the IDR for YTHDF2 PAR-CLIP based on T2CFraction. IDR is a rank-based statistic and the T2CFraction has many tied values. This markdown will explore a solution based on adding random noise to the data over 1000 iterations. An attempt will be made to parallelize due to runtime of IDR algorithm (~6 - 10 seconds)
@@ -39,15 +40,27 @@ read_and_calc <- function(infile) {
     filter(T2Cfraction < 1)
 }
 
-r2_bw3 <- read_and_calc("~/PARpipe/YTHDF2_rep2/SRR944647.allclusters.bed")
-r3_bw3 <- read_and_calc("~/PARpipe/YTHDF2_rep3/SRR944648.allclusters.bed")
+#Uncomment to re-read files
 
-saveRDS(r2_bw3, "~/PARCLIP_IDR/data/df2_rep2.rda")
-saveRDS(r3_bw3, "~/PARCLIP_IDR/data/df2_rep3.rda")
+# r2_bw3 <- read_and_calc("~/PARpipe/YTHDF2_rep2/SRR944647.allclusters.bed")
+# r3_bw3 <- read_and_calc("~/PARpipe/YTHDF2_rep3/SRR944648.allclusters.bed")
+# 
+# saveRDS(r2_bw3, "~/PARCLIP_IDR/data/df2_rep2.rda")
+# saveRDS(r3_bw3, "~/PARCLIP_IDR/data/df2_rep3.rda")
+
+#For using existing RDAs
+r2_bw3 <- readRDS("~/PARCLIP_IDR/data/df2_rep2.rda")
+r3_bw3 <- readRDS("~/PARCLIP_IDR/data/df2_rep3.rda")
 
 ```
+
 ##Find overlapping peaks
+
 ```{r}
+#Run this line to use previously calculated data
+# r_fracs <- readRDS("~/PARCLIP_IDR/data/r2_r3_overalps.rda")
+
+#Turn into GRanges object
 r2 <- GRanges(r2_bw3$Chromosome, IRanges(r2_bw3$Start, r2_bw3$End), score=r2_bw3$T2Cfraction, name = r2_bw3$Gene) %>%
   keepStandardChromosomes(pruning.mode="coarse")
 r3 <- GRanges(r3_bw3$Chromosome, IRanges(r3_bw3$Start, r3_bw3$End), score=r3_bw3$T2Cfraction, name = r3_bw3$Gene) %>%
@@ -56,7 +69,7 @@ r3 <- GRanges(r3_bw3$Chromosome, IRanges(r3_bw3$Start, r3_bw3$End), score=r3_bw3
 overlaps <- findOverlaps(r2, r3, maxgap = 1) %>%
   as_tibble()
 
-#CHECK IF PICKING MIN SCORE STILL MAKES SENSE WITH T2Cfraction
+#For multi overlaps, pick the peaks with the maximum score
 multi_overlaps <- overlaps %>%
   mutate(queryScore = r2$score[.$queryHits],
         subjectScore = r3$score[.$subjectHits]) %>%
@@ -86,139 +99,131 @@ r3_fracs <- tibble(
 
 #make one big 
 r_fracs <- bind_cols(r2_fracs, r3_fracs)
+
+saveRDS(r_fracs, "~/PARCLIP_IDR/data/r2_r3_overlaps.rda")
+
 ```
 
 
 ##Function to calculate IDR
+ - r rank function ranks low values as lower ranks, with high values as high ranks. (ie, rank 1 might be 0.001 and rank 100 might be .90). So if IDR function is expecting high confidence to mean high score, then we should not reverse ranks if we are passing ranks directly to idr. Because in this case rank == score, so rank 100 for 0.90 is what we are going for.
+ - shown below, using raw ranks or score as input to idr function gives the exact same distribution of resulting idrs (as long as jitter is used to break ties in raw score)
+ - conclusion: calculate idr using ranks as input, with ties broken randomly. This avoids possibility of jitter causing scores to flip rank that should not flip.
 ```{r}
 #using variables defined above rather than inside function to simplify furrr call below
 idr_calc <- function(score_df){
   #IDR calculation
-    res <- est.IDR(cbind(rank(-score_df$r2_score, ties.method = "random"), 
-                         rank(-score_df$r3_score, ties.method = "random")), 
+    res <- est.IDR(cbind(rank(score_df$r2_score, ties.method = "random"), 
+                         rank(score_df$r3_score, ties.method = "random")), 
                          mu=3, sigma=1, rho=.9, p=.5)
-    print(res)
 
   return(bind_cols(score_df,
                    tibble(idr = res$IDR)))
-  # return(select.IDR(cbind(rank(-score_df$r2_score, ties.method = "random"), 
-  #                        rank(-score_df$r3_score, ties.method = "random"))
-  #                        , res$IDR, 0.25))
 }
 
-test <- idr_calc(r_fracs)
+test <- idr_calc_rank(r_fracs)
+test2 <- idr_calc_rank(r_fracs)
 
 test %>%
-  mutate(sig = case_when(
-    idr < 0.10 ~ "Sig",
-    TRUE ~ "Non"
-  )) %>%
-  ggplot(aes(x = r3_score, y = r2_score, color = sig)) +
-  geom_point(alpha = 0.1, size = 1)
+  ggplot(aes(x = r3_score, y = r2_score, color = idr)) +
+  geom_point(alpha = 0.5, size = 1)
+
+#keeping in mind the ranking as described above
+test %>%
+    ggplot(aes(rank(r2_score, ties.method = "random"), rank(r3_score, ties.method = "random"), color = idr)) +
+    geom_point(size = 0.1, alpha = 0.5)
 
 test %>%
-    mutate(met_cutoff = case_when(
-      idr < 0.25 ~ TRUE,
-      TRUE ~ FALSE
-    )) %>%
-    ggplot(aes(rank1, rank2, col = met_cutoff)) +
-    scale_color_brewer(palette="Set1") +
-    geom_point(size = 0.1, alpha = 0.5)+
-    labs(title = paste("Points colored by IDR < 0.25"))
+  ggplot(aes(x = r3_score, y = r2_score, color = idr)) +
+  geom_point(alpha = 0.5, size = 1)
 
 test %>%
-    mutate(met_cutoff = case_when(
-      idr < 0.25 ~ TRUE,
-      TRUE ~ FALSE
-    )) %>%
-    ggplot(aes(rep1, rep2, col = met_cutoff)) +
-    scale_color_brewer(palette="Set1") +
-    geom_point(size = 0.1, alpha = 0.5)+
-    labs(title = paste("Points colored by IDR < 0.25"))
+    ggplot(aes(rank(-r2_score, ties.method = "random"),r2_score, color = idr)) +
+    geom_point(size = 1, alpha = 0.5)
 
+#Compare rank vs. score idr distributions to ensure they are very similar
+idr_calc_score <- function(score_df){
+  #IDR calculation
+    res <- est.IDR(cbind(jitter(score_df$r2_score), jitter(score_df$r3_score)), 
+                         mu=3, sigma=1, rho=.9, p=.5)
+
+  return(bind_cols(score_df,
+                   tibble(idr = res$IDR)))
+}
+
+test_s <- idr_calc_score(r_fracs)
+
+tibble(r1 = test$idr,
+       r2 = test2$idr,
+       s = test_s$idr) %>%
+  gather(dataset, idr) %>%
+  ggplot(aes(x = log10(idr), color = dataset, group = dataset)) +
+  geom_density()
+  
 ```
 
 ##Iterate using furrr
+ - Takes ~ 25 minutes for 1000 trials
 ```{r}
+idr_calc_parallel <- function(n, score_df){
+  #IDR calculation
+    res <- est.IDR(cbind(rank(score_df$r2_score, ties.method = "random"), 
+                         rank(score_df$r3_score, ties.method = "random")), 
+                         mu=3, sigma=1, rho=.9, p=.5)
+
+  return(bind_cols(score_df,
+                   tibble(idr = res$IDR)) %>%
+           select(r2_name, r3_name, idr))
+}
+
 plan(multiprocess)
 
 v <- 1:1000
 names(v) = 1000
 
 start_f <- Sys.time()
-t <- future_map_dfr(v, idr_calc, .id = "Iteration")
+t <- future_map_dfr(v, idr_calc_parallel, r_fracs, .id = "Iteration")
 end_f <- Sys.time()
 
 end_f - start_f
 
-saveRDS(t, file = "idr_T2Cfraction_MC1000")
+saveRDS(t, file = "~/PARCLIP_IDR/data/idr_T2Cfraction_MC1000")
 ```
 
-##Look at variance of idrs per gene
+##Get summary statistics of idrs per peak and plot distribution of mean(idr)
 ```{r}
-n_distinct(t$id)
-
 t_summary <- t %>%
-  group_by(id) %>%
+  select(-r2_name) %>%
+  group_by(r3_name) %>%
   summarize(v = var(idr),
             sd = sd(idr),
-            av = mean(idr))
+            av = mean(idr),
+            ci_lower = quantile(idr, 0.025),
+            ci_upper = quantile(idr, 0.975))
 
-n_distinct(t_summary %>%
-             filter(av < 0.25))
+saveRDS(t_summary, "~/PARCLIP_IDR/data/idr_summ_T2Cfraction_MC1000")
+
+ggplot(t_summary, aes(x = av)) +
+  geom_density()
 ```
 
-##Trying a weird plotting idea
- - Plot the 95% confidence interval:
-  - Take the quantile of .025 and .975 and plot that range (ymin = q(0.25), ymax = q(.975))
+##Plot the 95% confidence interval:
+  - Take the quantile of .025 and .975 and plot that range
 ```{r}
 t_summary %>%
-  ggplot(aes(x = reorder(id, av), y = av)) +
+  ggplot(aes(x = reorder(r3_name, av), y = av)) +
     #geom_point(size = 0.001, alpha = 0.01) +
-    geom_errorbar(aes(ymin = av-sd, ymax = av+sd), color = "steelblue", alpha = 0.5) +
+    geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), color = "steelblue", alpha = 0.5) +
     geom_hline(yintercept = 0.25, color = "red", size = 0.1, alpha = 0.5) +
-    scale_y_log10() +
-    theme_minimal() +
-    theme(axis.text.x = element_blank())
-
-
-```
-
-## Filter for values that have weirdly large SD, then plot points
-```{r}
-t_summary %>%
-  mutate(weird = case_when(
-    sd > av & av-sd < 0.25 ~ "Weird",
-    sd > av & av-sd >= 0.25 ~ "IM A PROBLEM",
-    TRUE ~ "Normal"
-  )) %>%
-  ggplot(aes(x = reorder(id, av), y = av, color = weird)) +
-    geom_point(size = 0.1, alpha = 0.5) +
-    #geom_errorbar(aes(ymin = av-sd, ymax = av+sd), color = "steelblue", alpha = 0.5) +
-    geom_hline(yintercept = 0.25, color = "red", size = 0.1, alpha = 0.5) +
-    scale_y_log10() +
+    #scale_y_log10() +
     theme_minimal() +
     theme(axis.text.x = element_blank()) +
-    scale_color_manual(values=c("grey", "blue", "red"))
+    labs(x = "Peaks, ordered by mean IDR", y = "Mean IDR", title = "95% Confidence Interval of IDR Values from 1000 MC Trials")
+
+
 ```
 
-##Look at highly tied values
-```{r}
-test %>%
-  group_by(rep1) %>%
-  filter(n_distinct > 1) %>%
-  ggplot(aes(rep1)) +
-  geom_bar()
 
-
-test <- tibble(d = d1) %>% 
-  count(d) %>%
-  filter(n > 1) 
-
-test %>%
-  ggplot(aes(x = d, y = n)) +
-  geom_col()
-```
 
 
 
