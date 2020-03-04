@@ -21,6 +21,8 @@ library(ggplot2)
 
 ##Read in data and calculate T2CFraction
  - HAVE TO FILTER OUT WHEN T2C == 1, because this is a genomic mutation
+ - Look at intersection of readbed and clusterbed to manually calculate T2Cfraction and ConversionSpecificity
+ - bedtools command: intersectBed -a SRR944648.readbed -b SRR944648.clusterbed -wao -s > SRR944648.allclusters.bed
 ```{r}
 read_and_calc <- function(infile) {
   read_tsv(infile, col_names = FALSE) %>%
