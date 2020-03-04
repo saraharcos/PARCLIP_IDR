@@ -51,8 +51,8 @@ read_and_calc <- function(infile) {
 # saveRDS(r3_bw3, "~/PARCLIP_IDR/data/df2_rep3.rda")
 
 #For using existing RDAs
-r2_bw3 <- readRDS("~/PARCLIP_IDR/data/df2_rep2.rda")
-r3_bw3 <- readRDS("~/PARCLIP_IDR/data/df2_rep3.rda")
+r2_bw3 <- readRDS("data/df2_rep2.rda")
+r3_bw3 <- readRDS("data/df2_rep3.rda")
 
 ```
 
@@ -102,7 +102,7 @@ r3_fracs <- tibble(
 #make one big 
 r_fracs <- bind_cols(r2_fracs, r3_fracs)
 
-saveRDS(r_fracs, "~/PARCLIP_IDR/data/r2_r3_overlaps.rda")
+saveRDS(r_fracs, "data/r2_r3_overlaps.rda")
 
 ```
 
@@ -189,7 +189,7 @@ end_f <- Sys.time()
 
 end_f - start_f
 
-saveRDS(t, file = "~/PARCLIP_IDR/data/idr_T2Cfraction_MC1000")
+saveRDS(t, file = "data/idr_T2Cfraction_MC1000")
 ```
 
 ##Get summary statistics of idrs per peak and plot distribution of mean(idr)
@@ -203,7 +203,7 @@ t_summary <- t %>%
             ci_lower = quantile(idr, 0.025),
             ci_upper = quantile(idr, 0.975))
 
-saveRDS(t_summary, "~/PARCLIP_IDR/data/idr_summ_T2Cfraction_MC1000")
+saveRDS(t_summary, "data/idr_summ_T2Cfraction_MC1000")
 
 ggplot(t_summary, aes(x = av)) +
   geom_density()

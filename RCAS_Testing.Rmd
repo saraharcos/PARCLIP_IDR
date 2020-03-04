@@ -30,12 +30,12 @@ Below is old solution. Fixed problem by setting up my own docker image based on 
 _So RCAS can't be installed because the R version is wrong, but I can't figure out how to update R on AWS. Temporary solution is to create necessary files, then scp them to my local machine._
 
 ```{r}
-r2_bw3 <- readRDS("~/PARCLIP_IDR/data/df2_rep2.rda")
-r3_bw3 <- readRDS("~/PARCLIP_IDR/data/df2_rep3.rda")
+r2_bw3 <- readRDS("data/df2_rep2.rda")
+r3_bw3 <- readRDS("data/df2_rep3.rda")
 
-r_fracs <- readRDS("~/PARCLIP_IDR/data/r2_r3_overlaps.rda")
+r_fracs <- readRDS("data/r2_r3_overlaps.rda")
 
-idr_mc <- readRDS("~/PARCLIP_IDR/data/idr_summ_T2Cfraction_MC1000")
+idr_mc <- readRDS("data/idr_summ_T2Cfraction_MC1000")
 
 m6A <- read_tsv("~/PARpipe/RCAS_files/m6A_peaks_hg19.bed", col_names = FALSE)
 ```
