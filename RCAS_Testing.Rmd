@@ -8,121 +8,45 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
-# if (!requireNamespace("BiocManager", quietly=TRUE)) install.packages("BiocManager")
-# BiocManager::install('RCAS')
 library(tidyverse)
-library(idr)
-library(GenomicRanges)
-#library(RCAS)
+library(RCAS)
+
 ```
 
 # Read in data
 ```{r}
-r2_bw3 <- readRDS("data/df2_rep2.rda")
-r3_bw3 <- readRDS("data/df2_rep3.rda")
+r2_bw3 <- readRDS("~/files/PARCLIP_IDR/data/df2_rep2.rda")
+r3_bw3 <- readRDS("~/files/PARCLIP_IDR/data/df2_rep3.rda")
 
-r_fracs <- readRDS("data/r2_r3_overlaps.rda")
+r_fracs <- readRDS("~/files/PARCLIP_IDR/data/r2_r3_overlaps.rda")
 
-idr_mc <- readRDS("data/idr_summ_T2Cfraction_MC1000")
+idr_mc <- readRDS("~/files/PARCLIP_IDR/data/idr_summ_T2Cfraction_MC1000")
 
-m6A <- read_tsv("data/m6A_peaks_hg19.bed", col_names = FALSE)
+m6A_r1 <- readRDS("~/files/PARCLIP_IDR/data/m6A_rep1.rda")
+m6A_r2 <- readRDS("~/files/PARCLIP_IDR/data/m6A_rep2.rda")
+m6A_r1_q0.2 <- readRDS("~/files/PARCLIP_IDR/data/m6A_rep1_q0.2.rda")
+m6A_r2_q0.2 <- readRDS("~/files/PARCLIP_IDR/data/m6A_rep2_q0.2.rda")
+
+m6A_overlaps <- readRDS("~/files/PARCLIP_IDR/data/m6A_overlaps.rda")
+
+idr_m6A <- readRDS("~/files/PARCLIP_IDR/data/idr_summ_m6A_MC1000")
+
+
+df2_m6A <- readRDS("~/files/PARCLIP_IDR/data/df2_m6A.rda")
 ```
 
-# Plot the distribution and the 95% Confidence Interval
+#save each of m6A/non-m6A as bed file
 ```{r}
-ggplot(idr_mc, aes(x = av)) +
-  geom_density() +
-  labs(x = "Mean IDR", title = "Distribution of mean IDR values from 1000 MC Trials")
+df2_m6A %>%
+  filter(m6A == "m6A") %>%
+  dplyr::select(Chromosome, Start, End, r3_name, T2Cfraction) %>%
+  write_tsv("df2_m6A.bed", col_names = FALSE)
 
-idr_mc %>%
-  ggplot(aes(x = reorder(r3_name, av), y = av)) +
-    #geom_point(size = 0.001, alpha = 0.01) +
-    geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), color = "steelblue", alpha = 0.5) +
-    geom_hline(yintercept = 0.25, color = "red", size = 0.1, alpha = 0.5) +
-    #scale_y_log10() +
-    theme_minimal() +
-    theme(axis.text.x = element_blank()) +
-    labs(x = "Peaks, ordered by mean IDR", y = "Mean IDR", title = "95% Confidence Interval of IDR Values from 1000 MC Trials")
-
+runReport(queryFilePath = 'df2_m6A.bed',
+            gffFilePath = '~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf',
+            msigdbAnalysis = FALSE)
 ```
 
-
-
-# Test overlaps with m6A dataset and distribution of scores
-```{r}
-#need to join idr results to original dfs to get peak start/stop info to calculate m6A overlaps. Use 3rd replicate
-r3_idr <- idr_mc %>%
-  left_join(r3_bw3, by = c("r3_name" = "Gene"))
-
-
-m6A_g <- GRanges(m6A$X1, IRanges(m6A$X2, m6A$X3)) %>%
-  keepStandardChromosomes(pruning.mode = "coarse")
-df2_g <- GRanges(r3_idr$Chromosome, IRanges(r3_idr$Start, r3_idr$End), score = r3_idr$av, name = r3_idr$r3_name) %>%
-  keepStandardChromosomes(pruning.mode="coarse")
-  
-
-ov_m6A <- as.data.frame(findOverlaps(m6A_g, df2_g))
-
-df2_m6A <- as.data.frame(df2_g[ov_m6A$subjectHits])
-
-r3_idr_m6A <- r3_idr %>%
-  mutate(m6A = case_when(r3_name %in% df2_m6A$name ~ "m6A",
-                         TRUE ~ "non-m6A"))
-```
-
-## Plot distributions
-```{r}
-pal <- c("#ef8a62", "#999999")
-
-ggplot(r3_idr_m6A, aes(x = av, group = m6A, color = m6A)) +
-  geom_density() +
-  geom_rug(alpha = 0.4) +
-  labs(title = "Distribution of IDR, based on m6A") +
-  scale_color_manual(values = pal)
-```
-
-```{r}
-ggplot(r3_idr_m6A, aes(x = ModeScore, group = m6A, color = m6A)) +
-  geom_density() +
-  geom_rug(alpha = 0.4) +
-  labs(title = "Distribution of Mode Scores, based on m6A") +
-  scale_color_manual(values = pal)
-```
-
-```{r}
-ggplot(r3_idr_m6A, aes(x = T2Cfraction, group = m6A, color = m6A)) +
-  geom_density() +
-  geom_rug(alpha = 0.4) +
-  labs(title = "Distribution of T2C Fraction, based on m6A") +
-  scale_color_manual(values = pal)
-```
-
-```{r}
-r3_idr_m6A %>%
-  filter(T2Cfraction >= 0.25) %>%
-  ggplot(aes(x = T2Cfraction, group = m6A, color = m6A)) +
-    geom_density() +
-    geom_rug(alpha = 0.4) +
-    labs(title = "Distribution of T2C Fraction restricted to >= 0.25, based on m6A") +
-  scale_color_manual(values = pal)
-```
-
-```{r}
-ggplot(r3_idr_m6A, aes(x = ConversionSpecificity, group = m6A, color = m6A)) +
-  geom_density() +
-  geom_rug(alpha = 0.4) +
-  labs(title = "Distribution of Conversion Specificity, based on m6A") +
-  scale_color_manual(values = pal)
-```
-
-```{r}
-ggplot(r3_idr_m6A, aes(x = log10(T2C_1), group = m6A, color = m6A)) +
-  geom_density() +
-  geom_rug(alpha = 0.4) +
-  labs(title = "Distribution of T2C Count, based on m6A") +
-  scale_color_manual(values = pal)
-
-```
 
 
 ```{r}

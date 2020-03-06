@@ -1,0 +1,238 @@
+---
+title: "m6A_wrangle"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(idr)
+library(GenomicRanges)
+library(furrr)
+```
+
+# Read in the m6A files
+```{r, message = FALSE}
+rep1 <- read_tsv("~/files/meRIP/macs2_results/rep1/rep1_peaks.narrowPeak", col_names = FALSE)
+rep1_q0.2 <- read_tsv("~/files/meRIP/macs2_results/rep1/rep1_q0.2_peaks.narrowPeak", col_names = FALSE)
+
+rep2 <- read_tsv("~/files/meRIP/macs2_results/rep2/rep2_peaks.narrowPeak", col_names = FALSE)
+rep2_q0.2 <- read_tsv("~/files/meRIP/macs2_results/rep2/rep2_q0.2_peaks.narrowPeak", col_names = FALSE)
+
+# saveRDS(rep1, "~/files/PARCLIP_IDR/data/m6A_rep1.rda")
+# saveRDS(rep2, "~/files//PARCLIP_IDR/data/m6A_rep2.rda")
+
+# saveRDS(rep1_q0.2, "~/files/PARCLIP_IDR/data/m6A_rep1_q0.2.rda")
+# saveRDS(rep2_q0.2, "~/files//PARCLIP_IDR/data/m6A_rep2_q0.2.rda")
+
+```
+
+# GRanges and overlaps
+```{r}
+
+#Turn into GRanges object
+r1 <- GRanges(rep1$X1, IRanges(rep1$X2, rep1$X3), score=rep1$X9, name = rep1$X4) %>%
+  keepStandardChromosomes(pruning.mode="coarse")
+
+r1_q0.2 <- GRanges(rep1_q0.2$X1, IRanges(rep1_q0.2$X2, rep1_q0.2$X3), score=rep1_q0.2$X9, name = rep1_q0.2$X4) %>%
+  keepStandardChromosomes(pruning.mode="coarse")
+
+r2 <- GRanges(rep2$X1, IRanges(rep2$X2, rep2$X3), score=rep2$X9, name = rep2$X4) %>%
+  keepStandardChromosomes(pruning.mode="coarse")
+
+r2_q0.2 <- GRanges(rep2_q0.2$X1, IRanges(rep2_q0.2$X2, rep2_q0.2$X3), score=rep2_q0.2$X9, name = rep2_q0.2$X4) %>%
+  keepStandardChromosomes(pruning.mode="coarse")
+
+
+
+overlaps <- findOverlaps(r1, r2, maxgap = 1) %>%
+  as_tibble()
+
+#For multi overlaps, pick the peaks with the maximum score
+multi_overlaps <- overlaps %>%
+  mutate(queryScore = r1$score[.$queryHits],
+        subjectScore = r2$score[.$subjectHits]) %>%
+  group_by(queryHits) %>%
+  mutate(subjectMax = max(subjectScore)) %>%
+  ungroup() %>%
+  group_by(subjectHits) %>%
+  mutate(queryMax = max(queryScore)) %>%
+  mutate(topHit = case_when(
+    queryScore == queryMax & subjectScore == subjectMax ~ TRUE,
+    TRUE ~ FALSE
+))
+
+overlaps_max <- multi_overlaps %>%
+  filter(topHit == TRUE)
+
+print(paste("Number of peaks breaking ties by max value: ", n_distinct(overlaps_max$queryHits)))
+
+r1_shared <- tibble(
+  r1_name = r1$name[overlaps_max$queryHits],
+  r1_score = r1$score[overlaps_max$queryHits]
+)
+r2_shared <- tibble(
+  r2_name = r2$name[overlaps_max$subjectHits],
+  r2_score = r2$score[overlaps_max$subjectHits]
+)
+
+#make one big 
+r_shared <- bind_cols(r1_shared, r2_shared)
+
+saveRDS(r_shared, "~/files/PARCLIP_IDR/data/m6A_overlaps.rda")
+
+#q0.20
+overlaps_q0.2 <- findOverlaps(r1_q0.2, r2_q0.2, maxgap = 1) %>%
+  as_tibble()
+
+#For multi overlaps, pick the peaks with the maximum score
+multi_overlaps_q0.2 <- overlaps_q0.2 %>%
+  mutate(queryScore = r1_q0.2$score[.$queryHits],
+        subjectScore = r2_q0.2$score[.$subjectHits]) %>%
+  group_by(queryHits) %>%
+  mutate(subjectMax = max(subjectScore)) %>%
+  ungroup() %>%
+  group_by(subjectHits) %>%
+  mutate(queryMax = max(queryScore)) %>%
+  mutate(topHit = case_when(
+    queryScore == queryMax & subjectScore == subjectMax ~ TRUE,
+    TRUE ~ FALSE
+))
+
+overlaps_max_q0.2 <- multi_overlaps_q0.2 %>%
+  filter(topHit == TRUE)
+
+print(paste("Number of peaks breaking ties by max value: ", n_distinct(overlaps_max_q0.2$queryHits)))
+
+r1_q0.2_shared <- tibble(
+  r1_name = r1_q0.2$name[overlaps_max$queryHits],
+  r1_score = r1_q0.2$score[overlaps_max$queryHits]
+)
+r2_q0.2_shared <- tibble(
+  r2_name = r2_q0.2$name[overlaps_max$subjectHits],
+  r2_score = r2_q0.2$score[overlaps_max$subjectHits]
+)
+
+#make one big 
+r_q0.2_shared <- bind_cols(r1_q0.2_shared, r2_q0.2_shared)
+
+saveRDS(r_shared, "~/files/PARCLIP_IDR/data/m6A_q0.2_overlaps.rda")
+
+
+```
+
+
+# IDR m6A
+```{r}
+idr_calc_parallel <- function(n, score_df){
+  #IDR calculation
+    res <- est.IDR(cbind(rank(score_df$r1_score, ties.method = "random"), 
+                         rank(score_df$r2_score, ties.method = "random")), 
+                         mu=3, sigma=1, rho=.9, p=.5)
+
+  return(bind_cols(score_df,
+                   tibble(idr = res$IDR)) %>%
+           select(r1_name, r2_name, idr))
+}
+
+plan(multiprocess)
+
+v <- 1:1000
+names(v) = 1000
+
+start_f <- Sys.time()
+t <- future_map_dfr(v, idr_calc_parallel, r_shared, .id = "Iteration")
+end_f <- Sys.time()
+
+end_f - start_f
+
+saveRDS(t, file = "~/files/PARCLIP_IDR/data/idr_m6A_MC1000")
+
+t_summary <- t %>%
+  select(-r1_name) %>%
+  group_by(r2_name) %>%
+  summarize(v = var(idr),
+            sd = sd(idr),
+            av = mean(idr),
+            ci_lower = quantile(idr, 0.025),
+            ci_upper = quantile(idr, 0.975))
+
+saveRDS(t_summary, "~/files/PARCLIP_IDR/data/idr_summ_m6A_MC1000")
+
+ggplot(t_summary, aes(x = av)) +
+  geom_density()
+
+t_summary %>%
+  ggplot(aes(x = reorder(r2_name, av), y = av)) +
+    #geom_point(size = 0.001, alpha = 0.01) +
+    geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), color = "steelblue", alpha = 0.5) +
+    geom_hline(yintercept = 0.25, color = "red", size = 0.1, alpha = 0.5) +
+    #scale_y_log10() +
+    theme_minimal() +
+    theme(axis.text.x = element_blank()) +
+    labs(x = "Peaks, ordered by mean IDR", y = "Mean IDR", title = "95% Confidence Interval of IDR Values from 1000 MC Trials")
+```
+# IDR m6A q0.20
+```{r}
+plan(multiprocess)
+
+v <- 1:1000
+names(v) = 1000
+
+start_f <- Sys.time()
+t_q0.2 <- future_map_dfr(v, idr_calc_parallel, r_q0.2_shared, .id = "Iteration")
+end_f <- Sys.time()
+
+end_f - start_f
+
+saveRDS(t_q0.2, file = "~/files/PARCLIP_IDR/data/idr_m6A_q0.2_MC1000")
+
+t_summary_q0.2 <- t_q0.2 %>%
+  select(-r1_name) %>%
+  group_by(r2_name) %>%
+  summarize(v = var(idr),
+            sd = sd(idr),
+            av = mean(idr),
+            ci_lower = quantile(idr, 0.025),
+            ci_upper = quantile(idr, 0.975))
+
+saveRDS(t_summary_q0.2, "~/files/PARCLIP_IDR/data/idr_summ_m6A_q0.2_MC1000")
+
+ggplot(t_summary_q0.2, aes(x = av)) +
+  geom_density()
+
+t_summary_q0.2 %>%
+  ggplot(aes(x = reorder(r2_name, av), y = av)) +
+    #geom_point(size = 0.001, alpha = 0.01) +
+    geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), color = "steelblue", alpha = 0.5) +
+    geom_hline(yintercept = 0.25, color = "red", size = 0.1, alpha = 0.5) +
+    #scale_y_log10() +
+    theme_minimal() +
+    theme(axis.text.x = element_blank()) +
+    labs(x = "Peaks, ordered by mean IDR", y = "Mean IDR", title = "95% Confidence Interval of IDR Values from 1000 MC Trials")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
