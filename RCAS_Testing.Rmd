@@ -10,6 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
 library(RCAS)
+library(readxl)
 
 ```
 
@@ -36,16 +37,69 @@ df2_m6A <- readRDS("~/files/PARCLIP_IDR/data/df2_m6A.rda")
 ```
 
 #save each of m6A/non-m6A as bed file
+and do motifs
 ```{r}
 df2_m6A %>%
   filter(m6A == "m6A") %>%
   dplyr::select(Chromosome, Start, End, r3_name, T2Cfraction) %>%
   write_tsv("df2_m6A.bed", col_names = FALSE)
 
-runReport(queryFilePath = 'df2_m6A.bed',
-            gffFilePath = '~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf',
-            msigdbAnalysis = FALSE)
+tb <- importBed('df2_m6A.bed')
+tg <- importGtf('~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf')
+
+motifResults <- runMotifRG(queryRegions = tb, 
+                           resizeN = 15,
+                           genomeVersion = 'hg19', 
+                           motifN = 3, nCores = 8)
+
+par(mfrow = c(1,2), mar = c(2,2,2,2))
+for (i in 1:length(motifResults$motifs)) {
+  motifPattern <- motifResults$motifs[[i]]@pattern
+  motifRG::plotMotif(match = motifResults$motifs[[i]]@match$pattern, 
+                     main = paste0('Motif-',i,': ',motifPattern),
+                     entropy = TRUE)
+}
+
+df2_m6A %>%
+  filter(m6A != "m6A") %>%
+  dplyr::select(Chromosome, Start, End, r3_name, T2Cfraction) %>%
+  write_tsv("df2_no_m6A.bed", col_names = FALSE)
+
+tb_n <- importBed('df2_no_m6A.bed')
+
+motifResults_n <- runMotifRG(queryRegions = tb_n, 
+                           resizeN = 15,
+                           genomeVersion = 'hg19', 
+                           motifN = 3, nCores = 8)
+
+par(mfrow = c(1,2), mar = c(2,2,2,2))
+for (i in 1:length(motifResults_n$motifs)) {
+  motifPattern_n <- motifResults_n$motifs[[i]]@pattern
+  motifRG::plotMotif(match = motifResults_n$motifs[[i]]@match$pattern, 
+                     main = paste0('Motif-',i,': ',motifPattern_n),
+                     entropy = TRUE)
+}
 ```
+
+# Ribosome profiling test
+```{r}
+ribo <- read_xlsx("~/files/PARCLIP_IDR/data/GSE49339_C-Ribosome_profiling.xlsx", sheet = 3, skip = 3, 
+                  col_names = c("Gene", "Ribosome-bound fragments", "Poly(A)+ mRNA input", "Translation Efficiency"))
+
+ggplot(ribo, aes(x  = `Translation Efficiency`)) +
+  stat_ecdf()
+
+ribo %>%
+  left_join(df2_m6A, by = c("Gene" = "Name")) %>%
+  ggplot(aes(x = `Translation Efficiency`)) +
+  stat_ecdf(aes(color = m6A))
+```
+
+# mRNA stability test
+```{r}
+
+```
+
 
 
 
