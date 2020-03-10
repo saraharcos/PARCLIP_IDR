@@ -14,6 +14,12 @@ library(readxl)
 
 ```
 
+#Fix naming of gene_biotype column in gtf rds
+```{r}
+gtf <- readRDS("~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf.granges.rds")
+```
+
+
 # Read in data
 ```{r}
 r2_bw3 <- readRDS("~/files/PARCLIP_IDR/data/df2_rep2.rda")
@@ -95,9 +101,26 @@ ribo %>%
   stat_ecdf(aes(color = m6A))
 ```
 
-# mRNA stability test
+# runReport test
 ```{r}
+tb <- importBed('df2_m6A.bed')
+tg <- importGtf('~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf')
 
+overlaps <- as.data.table(queryGff(queryRegions = tb, gffData = tg))
+df <- overlaps[,length(unique(overlappingQuery)), by = gene_type]
+colnames(df) <- c("feature", "count")
+df$percent <- round(df$count / length(queryRegions) * 100, 1)
+df <- df[order(count, decreasing = TRUE)]
+ggplot2::ggplot(df, aes(x = reorder(feature, -percent), y = percent)) + 
+  geom_bar(stat = 'identity', aes(fill = feature)) + 
+  geom_label(aes(y = percent + 0.5), label = df$count) + 
+  labs(x = 'transcript feature', y = paste0('percent overlap (n = ', length(queryRegions), ')')) + 
+  theme_bw(base_size = 14) + 
+  theme(axis.text.x = element_text(angle = 90))
+
+
+runReport('df2_m6A.bed', '~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf',
+          msigdbAnalysis = FALSE)
 ```
 
 
