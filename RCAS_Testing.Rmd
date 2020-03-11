@@ -11,17 +11,19 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(RCAS)
 library(readxl)
+BiocManager::install("ChIPseeker")
 
+library(BSgenome.Hsapiens.UCSC.hg19)
 ```
 
 #Fix naming of gene_biotype column in gtf rds
 ```{r}
-gtf <- readRDS("~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf.granges.rds")
-
-gtf$gene_biotype <- gtf$gene_type
-gtf$gene_type <- NULL
-
-saveRDS(gtf, "~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf.granges.rds")
+# gtf <- readRDS("~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf.granges.rds")
+# 
+# gtf$gene_biotype <- gtf$gene_type
+# gtf$gene_type <- NULL
+# 
+# saveRDS(gtf, "~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf.granges.rds")
 
 ```
 
@@ -48,8 +50,36 @@ idr_m6A <- readRDS("~/files/PARCLIP_IDR/data/idr_summ_m6A_MC1000")
 df2_m6A <- readRDS("~/files/PARCLIP_IDR/data/df2_m6A.rda")
 ```
 
-#save each of m6A/non-m6A as bed file
-and do motifs
+## Make everything in the same consistent format
+ - GRanges
+```{r}
+df2_rep2 <- GRanges(seqnames = r2_bw3$Chromosome, IRanges(start = r2_bw3$Start, end = r2_bw3$End), strand = r2_bw3$Strand) %>%
+  keepStandardChromosomes(pruning.mode="coarse")
+df2_rep3 <- GRanges(seqnames = r3_bw3$Chromosome, IRanges(start = r3_bw3$Start, end = r3_bw3$End), strand = r3_bw3$Strand) %>%
+  keepStandardChromosomes(pruning.mode="coarse")
+m6A_rep1 <- GRanges(seqnames = m6A_r1$X1, IRanges(start = m6A_r1$X2, end = m6A_r1$X3)) %>%
+  keepStandardChromosomes(pruning.mode="coarse")
+m6A_rep2 <- GRanges(seqnames = m6A_r2$X1, IRanges(start = m6A_r2$X2, end = m6A_r2$X3)) %>%
+  keepStandardChromosomes(pruning.mode="coarse")
+
+df2_ov <- findOverlaps(df2_rep2, df2_rep3) %>%
+  as_tibble()
+
+df2 <- GRanges(seqnames = r3_bw3$Chromosome[df2_ov$subjectHits], IRanges(start = r3_bw3$Start[df2_ov$subjectHits], end = r3_bw3$End[df2_ov$subjectHits])) %>%
+  keepStandardChromosomes(pruning.mode="coarse")
+
+m6A_ov <- findOverlaps(m6A_rep1, m6A_rep2) %>%
+  as_tibble()
+
+m6A <- GRanges(seqnames = m6A_r1$X1[m6A_ov$queryHits], IRanges(start = m6A_r1$X2[m6A_ov$queryHits], end = m6A_r1$X3[m6A_ov$queryHits])) %>%
+  keepStandardChromosomes(pruning.mode="coarse")
+
+getSeq(Hsapiens, m6A)
+```
+
+
+
+#Motifs
 ```{r}
 df2_m6A %>%
   filter(m6A == "m6A") %>%
@@ -94,6 +124,11 @@ for (i in 1:length(motifResults_n$motifs)) {
 ```
 
 # Ribosome profiling test
+ - Genes with no m6A peaks or DF2 peaks
+ - Genes with m6A peaks but no DF2 peaks
+ - Genes with DF2 peaks but no m6A peaks
+ - Genes with both peaks and overlap
+ - Genes with both peaks and no overlap
 ```{r}
 ribo <- read_xlsx("~/files/PARCLIP_IDR/data/GSE49339_C-Ribosome_profiling.xlsx", sheet = 3, skip = 3, 
                   col_names = c("Gene", "Ribosome-bound fragments", "Poly(A)+ mRNA input", "Translation Efficiency"))
@@ -105,12 +140,24 @@ ribo %>%
   left_join(df2_m6A, by = c("Gene" = "Name")) %>%
   ggplot(aes(x = `Translation Efficiency`)) +
   stat_ecdf(aes(color = m6A))
+
+df2_peaks <- r3_bw3 %>%
+  filter(Gene %in% r_fracs$r3_name)
+
+m6A_peaks <- m6A_r1 %>%
+  filter(X4 %in% m6A_overlaps$r1_name)
+
 ```
 
 # runReport test
 ```{r}
 tb <- importBed('df2_m6A.bed')
 tg <- importGtf('~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf')
+
+test <- queryGff(queryRegions = queryRegions, gff = gff)
+overlaps.dt <- data.table(GenomicRanges::as.data.frame(test)) 
+backgroundGenes <- unique(gff$gene_id)
+targetedGenes <- unique(test$gene_id)
 
 overlaps <- as.data.table(queryGff(queryRegions = tb, gffData = tg))
 df <- overlaps[,length(unique(overlappingQuery)), by = gene_type]
@@ -125,8 +172,7 @@ ggplot2::ggplot(df, aes(x = reorder(feature, -percent), y = percent)) +
   theme(axis.text.x = element_text(angle = 90))
 
 
-runReport('df2_m6A.bed', '~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf',
-          msigdbAnalysis = FALSE)
+runReport('df2_m6A.bed', '~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf')
 ```
 
 
