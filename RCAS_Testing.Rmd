@@ -17,6 +17,12 @@ library(readxl)
 #Fix naming of gene_biotype column in gtf rds
 ```{r}
 gtf <- readRDS("~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf.granges.rds")
+
+gtf$gene_biotype <- gtf$gene_type
+gtf$gene_type <- NULL
+
+saveRDS(gtf, "~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf.granges.rds")
+
 ```
 
 
