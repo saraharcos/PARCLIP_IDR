@@ -11,9 +11,13 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(RCAS)
 library(readxl)
-BiocManager::install("ChIPseeker")
+#BiocManager::install("ChIPseeker")
+#BiocManager::install("TxDb.Hsapiens.UCSC.hg19.knownGene")
 
 library(BSgenome.Hsapiens.UCSC.hg19)
+library(GenomicFeatures)
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+library(ChIPseeker)
 ```
 
 #Fix naming of gene_biotype column in gtf rds
@@ -33,21 +37,21 @@ library(BSgenome.Hsapiens.UCSC.hg19)
 r2_bw3 <- readRDS("~/files/PARCLIP_IDR/data/df2_rep2.rda")
 r3_bw3 <- readRDS("~/files/PARCLIP_IDR/data/df2_rep3.rda")
 
-r_fracs <- readRDS("~/files/PARCLIP_IDR/data/r2_r3_overlaps.rda")
+#r_fracs <- readRDS("~/files/PARCLIP_IDR/data/r2_r3_overlaps.rda")
 
-idr_mc <- readRDS("~/files/PARCLIP_IDR/data/idr_summ_T2Cfraction_MC1000")
+#idr_mc <- readRDS("~/files/PARCLIP_IDR/data/idr_summ_T2Cfraction_MC1000")
 
 m6A_r1 <- readRDS("~/files/PARCLIP_IDR/data/m6A_rep1.rda")
 m6A_r2 <- readRDS("~/files/PARCLIP_IDR/data/m6A_rep2.rda")
-m6A_r1_q0.2 <- readRDS("~/files/PARCLIP_IDR/data/m6A_rep1_q0.2.rda")
-m6A_r2_q0.2 <- readRDS("~/files/PARCLIP_IDR/data/m6A_rep2_q0.2.rda")
+#m6A_r1_q0.2 <- readRDS("~/files/PARCLIP_IDR/data/m6A_rep1_q0.2.rda")
+#m6A_r2_q0.2 <- readRDS("~/files/PARCLIP_IDR/data/m6A_rep2_q0.2.rda")
 
-m6A_overlaps <- readRDS("~/files/PARCLIP_IDR/data/m6A_overlaps.rda")
+#m6A_overlaps <- readRDS("~/files/PARCLIP_IDR/data/m6A_overlaps.rda")
 
-idr_m6A <- readRDS("~/files/PARCLIP_IDR/data/idr_summ_m6A_MC1000")
+#idr_m6A <- readRDS("~/files/PARCLIP_IDR/data/idr_summ_m6A_MC1000")
 
 
-df2_m6A <- readRDS("~/files/PARCLIP_IDR/data/df2_m6A.rda")
+#df2_m6A <- readRDS("~/files/PARCLIP_IDR/data/df2_m6A.rda")
 ```
 
 ## Make everything in the same consistent format
@@ -62,19 +66,67 @@ m6A_rep1 <- GRanges(seqnames = m6A_r1$X1, IRanges(start = m6A_r1$X2, end = m6A_r
 m6A_rep2 <- GRanges(seqnames = m6A_r2$X1, IRanges(start = m6A_r2$X2, end = m6A_r2$X3)) %>%
   keepStandardChromosomes(pruning.mode="coarse")
 
-df2_ov <- findOverlaps(df2_rep2, df2_rep3) %>%
+df2_ov <- findOverlaps(df2_rep2, df2_rep3, maxgap = 1) %>%
   as_tibble()
 
-df2 <- GRanges(seqnames = r3_bw3$Chromosome[df2_ov$subjectHits], IRanges(start = r3_bw3$Start[df2_ov$subjectHits], end = r3_bw3$End[df2_ov$subjectHits])) %>%
+df2 <- GRanges(seqnames = r3_bw3$Chromosome[df2_ov$subjectHits], IRanges(start = r3_bw3$Start[df2_ov$subjectHits], end = r3_bw3$End[df2_ov$subjectHits]), strand = r3_bw3$Strand[df2_ov$subjectHits]) %>%
   keepStandardChromosomes(pruning.mode="coarse")
 
-m6A_ov <- findOverlaps(m6A_rep1, m6A_rep2) %>%
+m6A_ov <- findOverlaps(m6A_rep1, m6A_rep2, maxgap = 1) %>%
   as_tibble()
 
 m6A <- GRanges(seqnames = m6A_r1$X1[m6A_ov$queryHits], IRanges(start = m6A_r1$X2[m6A_ov$queryHits], end = m6A_r1$X3[m6A_ov$queryHits])) %>%
   keepStandardChromosomes(pruning.mode="coarse")
 
-getSeq(Hsapiens, m6A)
+```
+
+#Get gene names using UCSC known genes
+```{r}
+gencode_hg19 <- makeTxDbFromGFF(file = "~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf", organism = "Homo sapiens")
+
+txbg <- transcriptsBy(gencode_hg19, by = "gene") %>% unlist()
+
+# transcriptsByGene = transcriptsBy(TxDb.Hsapiens.UCSC.hg19.knownGene, by="gene")
+# tx_unlist = unlist(transcriptsByGene)
+# 
+# df2_tx_ov <- findOverlaps(tx_unlist, df2)
+# 
+# df2_names <- GRanges(seqnames = seqnames(df2[subjectHits(df2_tx_ov)]), 
+#                      IRanges(start = start(df2[subjectHits(df2_tx_ov)]), 
+#                              end = end(df2[subjectHits(df2_tx_ov)])), 
+#                      tx_id = tx_unlist[queryHits(df2_tx_ov)]$tx_id)
+# 
+# m6A_tx_ov <- findOverlaps(tx_unlist, m6A) 
+# 
+# m6A_names <- GRanges(seqnames = seqnames(m6A[subjectHits(m6A_tx_ov)]), 
+#                      IRanges(start = start(m6A[subjectHits(m6A_tx_ov)]), 
+#                              end = end(m6A[subjectHits(m6A_tx_ov)])), 
+#                      tx_id = tx_unlist[queryHits(m6A_tx_ov)]$tx_id)
+# 
+# 
+# df2_t <- df2_names %>%
+#   as_tibble
+
+```
+
+#Get tally for each gene of m6A sites, DF2 sites, and shared sites
+ - First annotate DF2 sites by presence/absence of m6A
+ - Then make dataframe of gene, DF2 site id, m6A site id, and p/a of m6A
+ - Then make tallies
+ - Then plot distribution
+
+```{r}
+df2_peakanno <- annotatePeak(df2, TxDb = txbg) %>%
+  as_tibble()
+
+m6A_peakanno <- annotatePeak(m6A, TxDb = txbg) %>%
+  as_tibble()
+
+df2_m6A <- subsetByOverlaps(df2, m6A) %>%
+  annotatePeak(TxDb = txbg) %>%
+  as_tibble()
+
+
 ```
 
 
