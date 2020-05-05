@@ -12,12 +12,14 @@ library(tidyverse)
 library(RCAS)
 library(readxl)
 #BiocManager::install("ChIPseeker")
+#BiocManager::install("clusterProfiler")
 #BiocManager::install("TxDb.Hsapiens.UCSC.hg19.knownGene")
+#BiocManager::install("org.Hs.eg.db")
 
-library(BSgenome.Hsapiens.UCSC.hg19)
 library(GenomicFeatures)
-library(TxDb.Hsapiens.UCSC.hg19.knownGene)
-library(ChIPseeker)
+# library(ChIPseeker)
+# library(clusterProfiler)
+# library(org.Hs.eg.db)
 ```
 
 #Fix naming of gene_biotype column in gtf rds
@@ -28,7 +30,6 @@ library(ChIPseeker)
 # gtf$gene_type <- NULL
 # 
 # saveRDS(gtf, "~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf.granges.rds")
-
 ```
 
 
@@ -57,9 +58,9 @@ m6A_r2 <- readRDS("~/files/PARCLIP_IDR/data/m6A_rep2.rda")
 ## Make everything in the same consistent format
  - GRanges
 ```{r}
-df2_rep2 <- GRanges(seqnames = r2_bw3$Chromosome, IRanges(start = r2_bw3$Start, end = r2_bw3$End), strand = r2_bw3$Strand) %>%
+df2_rep2 <- GRanges(seqnames = r2_bw3$Chromosome, IRanges(start = r2_bw3$Start, end = r2_bw3$End), strand = r2_bw3$Strand, name = r2_bw3$Name) %>%
   keepStandardChromosomes(pruning.mode="coarse")
-df2_rep3 <- GRanges(seqnames = r3_bw3$Chromosome, IRanges(start = r3_bw3$Start, end = r3_bw3$End), strand = r3_bw3$Strand) %>%
+df2_rep3 <- GRanges(seqnames = r3_bw3$Chromosome, IRanges(start = r3_bw3$Start, end = r3_bw3$End), strand = r3_bw3$Strand, name = r3_bw3$Name) %>%
   keepStandardChromosomes(pruning.mode="coarse")
 m6A_rep1 <- GRanges(seqnames = m6A_r1$X1, IRanges(start = m6A_r1$X2, end = m6A_r1$X3)) %>%
   keepStandardChromosomes(pruning.mode="coarse")
@@ -69,7 +70,7 @@ m6A_rep2 <- GRanges(seqnames = m6A_r2$X1, IRanges(start = m6A_r2$X2, end = m6A_r
 df2_ov <- findOverlaps(df2_rep2, df2_rep3, maxgap = 1) %>%
   as_tibble()
 
-df2 <- GRanges(seqnames = r3_bw3$Chromosome[df2_ov$subjectHits], IRanges(start = r3_bw3$Start[df2_ov$subjectHits], end = r3_bw3$End[df2_ov$subjectHits]), strand = r3_bw3$Strand[df2_ov$subjectHits]) %>%
+df2 <- GRanges(seqnames = r3_bw3$Chromosome[df2_ov$subjectHits], IRanges(start = r3_bw3$Start[df2_ov$subjectHits], end = r3_bw3$End[df2_ov$subjectHits]), strand = r3_bw3$Strand[df2_ov$subjectHits], name = r3_bw3$Name[df2_ov$subjectHits]) %>%
   keepStandardChromosomes(pruning.mode="coarse")
 
 m6A_ov <- findOverlaps(m6A_rep1, m6A_rep2, maxgap = 1) %>%
@@ -80,35 +81,6 @@ m6A <- GRanges(seqnames = m6A_r1$X1[m6A_ov$queryHits], IRanges(start = m6A_r1$X2
 
 ```
 
-#Get gene names using UCSC known genes
-```{r}
-gencode_hg19 <- makeTxDbFromGFF(file = "~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf", organism = "Homo sapiens")
-
-txbg <- transcriptsBy(gencode_hg19, by = "gene") %>% unlist()
-
-# transcriptsByGene = transcriptsBy(TxDb.Hsapiens.UCSC.hg19.knownGene, by="gene")
-# tx_unlist = unlist(transcriptsByGene)
-# 
-# df2_tx_ov <- findOverlaps(tx_unlist, df2)
-# 
-# df2_names <- GRanges(seqnames = seqnames(df2[subjectHits(df2_tx_ov)]), 
-#                      IRanges(start = start(df2[subjectHits(df2_tx_ov)]), 
-#                              end = end(df2[subjectHits(df2_tx_ov)])), 
-#                      tx_id = tx_unlist[queryHits(df2_tx_ov)]$tx_id)
-# 
-# m6A_tx_ov <- findOverlaps(tx_unlist, m6A) 
-# 
-# m6A_names <- GRanges(seqnames = seqnames(m6A[subjectHits(m6A_tx_ov)]), 
-#                      IRanges(start = start(m6A[subjectHits(m6A_tx_ov)]), 
-#                              end = end(m6A[subjectHits(m6A_tx_ov)])), 
-#                      tx_id = tx_unlist[queryHits(m6A_tx_ov)]$tx_id)
-# 
-# 
-# df2_t <- df2_names %>%
-#   as_tibble
-
-```
-
 #Get tally for each gene of m6A sites, DF2 sites, and shared sites
  - First annotate DF2 sites by presence/absence of m6A
  - Then make dataframe of gene, DF2 site id, m6A site id, and p/a of m6A
@@ -116,17 +88,35 @@ txbg <- transcriptsBy(gencode_hg19, by = "gene") %>% unlist()
  - Then plot distribution
 
 ```{r}
-df2_peakanno <- annotatePeak(df2, TxDb = txbg) %>%
-  as_tibble()
 
-m6A_peakanno <- annotatePeak(m6A, TxDb = txbg) %>%
-  as_tibble()
+df2_df <- df2 %>%
+  as_tibble() %>%
+  mutate(peakID = paste(seqnames, start, end, sep = "_")) %>%
+  filter(name != "")
 
 df2_m6A <- subsetByOverlaps(df2, m6A) %>%
-  annotatePeak(TxDb = txbg) %>%
-  as_tibble()
+  as_tibble() %>%
+  mutate(peakID = paste(seqnames, start, end, sep = "_")) %>%
+  filter(name != "")
+  
+all_peaks <- df2_df %>%
+  mutate(PeakCat = case_when(
+    peakID %in% df2_m6A$peakID ~ "m6A_overlapped",
+    TRUE ~ "df2_only"
+  )) %>%
+  group_by(name, PeakCat) %>%
+  tally() %>%
+  group_by(name) %>%
+  mutate(total_peaks = sum(n)) %>%
+  spread(key = PeakCat, value = n, fill = 0) %>%
+  mutate(df2_only_frac = df2_only / total_peaks)
 
+ggplot(all_peaks, aes(x = df2_only_frac)) +
+  geom_bar()
 
+ggplot(all_peaks, aes(x = df2_only)) +
+  geom_bar() +
+  scale_x_continuous(breaks = c(0:10))
 ```
 
 
@@ -177,7 +167,6 @@ for (i in 1:length(motifResults_n$motifs)) {
 
 # Ribosome profiling test
  - Genes with no m6A peaks or DF2 peaks
- - Genes with m6A peaks but no DF2 peaks
  - Genes with DF2 peaks but no m6A peaks
  - Genes with both peaks and overlap
  - Genes with both peaks and no overlap
@@ -189,17 +178,67 @@ ggplot(ribo, aes(x  = `Translation Efficiency`)) +
   stat_ecdf()
 
 ribo %>%
-  left_join(df2_m6A, by = c("Gene" = "Name")) %>%
+  left_join(all_peaks, by = c("Gene" = "name")) %>%
+  mutate(df2_only_cat = case_when(
+    df2_only < 6 ~ as.character(df2_only),
+    TRUE ~ "> 5"
+  )) %>%
   ggplot(aes(x = `Translation Efficiency`)) +
-  stat_ecdf(aes(color = m6A))
+  stat_ecdf(aes(color = as.factor(df2_only_cat), group = as.factor(df2_only_cat)))
 
-df2_peaks <- r3_bw3 %>%
-  filter(Gene %in% r_fracs$r3_name)
+ribo %>%
+  left_join(all_peaks, by = c("Gene" = "name")) %>%
+  mutate(m6A_ov_cat = case_when(
+    m6A_overlapped < 6 ~ as.character(m6A_overlapped),
+    TRUE ~ "> 5"
+  )) %>%
+  ggplot(aes(x = `Translation Efficiency`)) +
+  stat_ecdf(aes(color = as.factor(m6A_ov_cat), group = as.factor(m6A_ov_cat))) 
 
-m6A_peaks <- m6A_r1 %>%
-  filter(X4 %in% m6A_overlaps$r1_name)
+ribo %>%
+  left_join(all_peaks, by = c("Gene" = "name")) %>%
+  mutate(df2_total_cat = case_when(
+    total_peaks < 6 ~ as.character(total_peaks),
+    TRUE ~ "> 5"
+  )) %>%
+  ggplot(aes(x = `Translation Efficiency`)) +
+  stat_ecdf(aes(color = as.factor(df2_total_cat), group = as.factor(df2_total_cat)),
+            alpha = 0.6, size = 1) 
+
+ribo %>%
+  left_join(all_peaks, by = c("Gene" = "name")) %>%
+  filter(!is.na(total_peaks)) %>%
+  ggplot(aes(y = `Translation Efficiency`, x = as.factor(df2_only))) +
+  geom_boxplot()
+
+ribo %>%
+  left_join(all_peaks, by = c("Gene" = "name")) %>%
+  filter(!is.na(total_peaks)) %>%
+  ggplot(aes(y = `Translation Efficiency`, x = as.factor(m6A_overlapped))) +
+  geom_boxplot()
+
+ribo %>%
+  left_join(all_peaks, by = c("Gene" = "name")) %>%
+  filter(!is.na(total_peaks)) %>%
+  ggplot(aes(y = `Translation Efficiency`, x = as.factor(total_peaks))) +
+  geom_boxplot()
+
+ribo %>%
+  left_join(all_peaks, by = c("Gene" = "name")) %>%
+  ggplot(aes(y = `Translation Efficiency`, x = df2_only_frac)) +
+  geom_point(color = "steelblue", alpha = 0.5)
 
 ```
+
+#Halflife data
+```{r}
+hl_rep1 <- read_xlsx("~/files/PARCLIP_IDR/data/GSE49339_D-mRNA_lifetime-rep1.xlsx")
+```
+
+
+
+
+
 
 # runReport test
 ```{r}
