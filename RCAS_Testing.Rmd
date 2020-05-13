@@ -11,14 +11,10 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(RCAS)
 library(readxl)
-#BiocManager::install("ChIPseeker")
-#BiocManager::install("clusterProfiler")
 #BiocManager::install("TxDb.Hsapiens.UCSC.hg19.knownGene")
 #BiocManager::install("org.Hs.eg.db")
 
 library(GenomicFeatures)
-# library(ChIPseeker)
-# library(clusterProfiler)
 # library(org.Hs.eg.db)
 ```
 
@@ -231,8 +227,58 @@ ribo %>%
 ```
 
 #Halflife data
-```{r}
-hl_rep1 <- read_xlsx("~/files/PARCLIP_IDR/data/GSE49339_D-mRNA_lifetime-rep1.xlsx")
+```{r, warnings = FALSE}
+hl_rep1 <- read_xlsx("~/files/PARCLIP_IDR/data/GSE49339_E-mRNA_Lifetime-rep2.xlsx", sheet = 4, skip = 1) %>%
+  dplyr::select(Gene, `log2(siYTHDF2/siControl)`)
+
+hl_rep1 %>%
+  left_join(all_peaks, by = c("Gene" = "name")) %>%
+  mutate(category = case_when(
+    df2_only_frac < 1 ~ "Shared",
+    df2_only_frac == 1 ~ "DF2 Only",
+    is.na(df2_only_frac) ~ "Non-target"
+  )) %>%
+  ggplot(aes(x = `log2(siYTHDF2/siControl)`)) +
+  stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
+  scale_x_continuous(limits = c(-1.5, 1.5))
+
+ribo %>%
+  left_join(all_peaks, by = c("Gene" = "name")) %>%
+  mutate(category = case_when(
+    df2_only_frac < 1 ~ "Shared",
+    df2_only_frac == 1 ~ "DF2 Only",
+    is.na(df2_only_frac) ~ "Non-target"
+  )) %>%
+  ggplot(aes(x = `Translation Efficiency`)) +
+  stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
+  scale_x_continuous(limits = c(-1.5, 1.5))
+
+
+ribo %>%
+  left_join(all_peaks, by = c("Gene" = "name")) %>%
+  filter(df2_only_frac < 1) %>%
+  mutate(category = case_when(
+    df2_only_frac < 0.25 ~ " < 25% Free",
+    df2_only_frac >= 0.25 & df2_only_frac < 0.5 ~ "25%-50% Free",
+    df2_only_frac >= 0.5 & df2_only_frac < 0.75 ~ "50%-75% Free",
+    df2_only_frac >= 0.75 ~ " > 75% Free",
+    is.na(df2_only_frac) ~ "Non-target"
+  )) %>%
+  ggplot(aes(x = `Translation Efficiency`)) +
+  stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
+  scale_x_continuous(limits = c(-1.5, 1.5))
+
+ribo %>%
+  left_join(all_peaks, by = c("Gene" = "name")) %>%
+  mutate(category = case_when(
+    df2_only_frac < 1 ~ "Shared",
+    df2_only_frac == 1 ~ "DF2 Only",
+    is.na(df2_only_frac) ~ "Non-target"
+  )) %>%
+  ggplot(aes(x = `Ribosome-bound fragments`)) +
+  stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
+  scale_x_continuous(limits = c(-1.5, 1.5))
+
 ```
 
 
