@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE)
 
 library(tidyverse)
 library(RCAS)
@@ -15,7 +15,8 @@ library(readxl)
 #BiocManager::install("org.Hs.eg.db")
 
 library(GenomicFeatures)
-# library(org.Hs.eg.db)
+library(clusterProfiler)
+library(org.Hs.eg.db)
 ```
 
 #Fix naming of gene_biotype column in gtf rds
@@ -111,14 +112,13 @@ ggplot(all_peaks, aes(x = df2_only_frac)) +
   geom_bar()
 
 ggplot(all_peaks, aes(x = df2_only)) +
-  geom_bar() +
-  scale_x_continuous(breaks = c(0:10))
+  geom_bar()
 ```
 
 
 
 #Motifs
-```{r}
+```{r, eval = FALSE}
 df2_m6A %>%
   filter(m6A == "m6A") %>%
   dplyr::select(Chromosome, Start, End, r3_name, T2Cfraction) %>%
@@ -166,7 +166,7 @@ for (i in 1:length(motifResults_n$motifs)) {
  - Genes with DF2 peaks but no m6A peaks
  - Genes with both peaks and overlap
  - Genes with both peaks and no overlap
-```{r}
+```{r, eval = FALSE}
 ribo <- read_xlsx("~/files/PARCLIP_IDR/data/GSE49339_C-Ribosome_profiling.xlsx", sheet = 3, skip = 3, 
                   col_names = c("Gene", "Ribosome-bound fragments", "Poly(A)+ mRNA input", "Translation Efficiency"))
 
@@ -231,10 +231,14 @@ ribo %>%
 hl_rep1 <- read_xlsx("~/files/PARCLIP_IDR/data/GSE49339_E-mRNA_Lifetime-rep2.xlsx", sheet = 4, skip = 1) %>%
   dplyr::select(Gene, `log2(siYTHDF2/siControl)`)
 
+ribo <- read_xlsx("~/files/PARCLIP_IDR/data/GSE49339_C-Ribosome_profiling.xlsx", sheet = 3, skip = 3, 
+                  col_names = c("Gene", "Ribosome-bound fragments", "Poly(A)+ mRNA input", "Translation Efficiency"))
+
 hl_rep1 %>%
   left_join(all_peaks, by = c("Gene" = "name")) %>%
   mutate(category = case_when(
-    df2_only_frac < 1 ~ "Shared",
+    df2_only_frac == 0 ~ "All Shared",
+    df2_only_frac < 1 & df2_only_frac > 0 ~ "Some Shared",
     df2_only_frac == 1 ~ "DF2 Only",
     is.na(df2_only_frac) ~ "Non-target"
   )) %>%
@@ -245,7 +249,8 @@ hl_rep1 %>%
 ribo %>%
   left_join(all_peaks, by = c("Gene" = "name")) %>%
   mutate(category = case_when(
-    df2_only_frac < 1 ~ "Shared",
+    df2_only_frac == 0 ~ "All Shared",
+    df2_only_frac < 1 & df2_only_frac > 0 ~ "Some Shared",
     df2_only_frac == 1 ~ "DF2 Only",
     is.na(df2_only_frac) ~ "Non-target"
   )) %>%
@@ -254,24 +259,59 @@ ribo %>%
   scale_x_continuous(limits = c(-1.5, 1.5))
 
 
-ribo %>%
-  left_join(all_peaks, by = c("Gene" = "name")) %>%
-  filter(df2_only_frac < 1) %>%
-  mutate(category = case_when(
-    df2_only_frac < 0.25 ~ " < 25% Free",
-    df2_only_frac >= 0.25 & df2_only_frac < 0.5 ~ "25%-50% Free",
-    df2_only_frac >= 0.5 & df2_only_frac < 0.75 ~ "50%-75% Free",
-    df2_only_frac >= 0.75 ~ " > 75% Free",
-    is.na(df2_only_frac) ~ "Non-target"
-  )) %>%
-  ggplot(aes(x = `Translation Efficiency`)) +
-  stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
-  scale_x_continuous(limits = c(-1.5, 1.5))
+# ribo %>%
+#   left_join(all_peaks, by = c("Gene" = "name")) %>%
+#   filter(df2_only_frac < 1) %>%
+#   mutate(category = case_when(
+#     df2_only_frac < 0.25 ~ " < 25% Free",
+#     df2_only_frac >= 0.25 & df2_only_frac < 0.5 ~ "25%-50% Free",
+#     df2_only_frac >= 0.5 & df2_only_frac < 0.75 ~ "50%-75% Free",
+#     df2_only_frac >= 0.75 ~ " > 75% Free",
+#     is.na(df2_only_frac) ~ "Non-target"
+#   )) %>%
+#   ggplot(aes(x = `Translation Efficiency`)) +
+#   stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
+#   scale_x_continuous(limits = c(-1.5, 1.5))
+# 
+# ribo %>%
+#   left_join(all_peaks, by = c("Gene" = "name")) %>%
+#   mutate(category = case_when(
+#     df2_only_frac < 0.5 ~ " < 50% Free",
+#     df2_only_frac >= 0.5 ~ " > 50% Free",
+#     is.na(df2_only_frac) ~ "Non-target"
+#   )) %>%
+#   ggplot(aes(x = `Translation Efficiency`)) +
+#   stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
+#   scale_x_continuous(limits = c(-1.5, 1.5))
+# 
+# ribo %>%
+#   left_join(all_peaks, by = c("Gene" = "name")) %>%
+#   #filter(df2_only_frac < 1) %>%
+#   mutate(category = case_when(
+#     df2_only_frac == 0  ~ "All shared",
+#     df2_only_frac > 0 & df2_only_frac < 0.25 ~ " < 25% Free",
+#     df2_only_frac >= 0.25 & df2_only_frac < 0.5 ~ "25%-50% Free",
+#     df2_only_frac >= 0.5 & df2_only_frac < 0.75 ~ "50%-75% Free",
+#     df2_only_frac >= 0.75  & df2_only_frac < 1 ~ " > 75% Free",
+#     df2_only_frac == 1 ~ "All free",
+#     is.na(df2_only_frac) ~ "Non-target"
+#   )) %>%
+#   mutate(category = factor(category, levels = c("All shared",
+#                                                 " < 25% Free",
+#                                                 "25%-50% Free",
+#                                                 "50%-75% Free",
+#                                                 " > 75% Free",
+#                                                 "All free",
+#                                                 "Non-target"))) %>%
+#   ggplot(aes(x = category, y = `Translation Efficiency`)) +
+#   geom_violin() +
+#   geom_boxplot(size = 0.5, width = 0.2)
 
 ribo %>%
   left_join(all_peaks, by = c("Gene" = "name")) %>%
   mutate(category = case_when(
-    df2_only_frac < 1 ~ "Shared",
+    df2_only_frac == 0 ~ "All Shared",
+    df2_only_frac < 1 & df2_only_frac > 0 ~ "Some Shared",
     df2_only_frac == 1 ~ "DF2 Only",
     is.na(df2_only_frac) ~ "Non-target"
   )) %>%
@@ -287,7 +327,7 @@ ribo %>%
 
 
 # runReport test
-```{r}
+```{r, eval = FALSE}
 tb <- importBed('df2_m6A.bed')
 tg <- importGtf('~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf')
 
@@ -313,7 +353,135 @@ runReport('df2_m6A.bed', '~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff
 ```
 
 
+#GO analysis
+```{r}
 
+gene_cats <- all_peaks %>%
+  mutate(category = case_when(
+    df2_only_frac == 0 ~ "All Shared",
+    df2_only_frac < 1 & df2_only_frac > 0 ~ "Some Shared",
+    df2_only_frac == 1 ~ "DF2 Only"
+  ))
+
+
+df2_only_MF <- enrichGO(gene     = gene_cats %>% filter(category == "DF2 Only") %>% pull(name),
+                OrgDb         = org.Hs.eg.db,
+                keyType       = 'SYMBOL',
+                ont           = "MF",
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 0.01,
+                qvalueCutoff  = 0.05,
+                readable = FALSE)
+
+dotplot(df2_only_MF) +
+  scale_color_gradient(trans = "log10", high = "blue", low = "red") +
+  labs(title = "GO Molecular Function: Genes with DF2-only peaks only")
+
+shared_MF <- enrichGO(gene     = gene_cats %>% filter(category %in% c("All Shared", "Some Shared")) %>% pull(name),
+                OrgDb         = org.Hs.eg.db,
+                keyType       = 'SYMBOL',
+                ont           = "MF",
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 0.01,
+                qvalueCutoff  = 0.05,
+                readable = FALSE)
+
+dotplot(shared_MF) +
+  scale_color_gradient(trans = "log10", high = "blue", low = "red") +
+  labs(title = "GO Molecular Function: Genes with shared peaks")
+
+
+df2_only_CC <- enrichGO(gene     = gene_cats %>% filter(category == "DF2 Only") %>% pull(name),
+                OrgDb         = org.Hs.eg.db,
+                keyType       = 'SYMBOL',
+                ont           = "CC",
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 0.01,
+                qvalueCutoff  = 0.05,
+                readable = FALSE)
+
+dotplot(df2_only_CC) +
+  scale_color_gradient(trans = "log10", high = "blue", low = "red") +
+  labs(title = "GO Cellular Component: Genes with DF2-only peaks only")
+
+shared_CC <- enrichGO(gene     = gene_cats %>% filter(category %in% c("All Shared", "Some Shared")) %>% pull(name),
+                OrgDb         = org.Hs.eg.db,
+                keyType       = 'SYMBOL',
+                ont           = "CC",
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 0.01,
+                qvalueCutoff  = 0.05,
+                readable = FALSE)
+
+dotplot(shared_CC) +
+  scale_color_gradient(trans = "log10", high = "blue", low = "red") +
+  labs(title = "GO Cellular Component: Genes with shared peaks")
+
+df2_only_BP <- enrichGO(gene     = gene_cats %>% filter(category == "DF2 Only") %>% pull(name),
+                OrgDb         = org.Hs.eg.db,
+                keyType       = 'SYMBOL',
+                ont           = "BP",
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 0.01,
+                qvalueCutoff  = 0.05,
+                readable = FALSE)
+
+dotplot(df2_only_BP) +
+  scale_color_gradient(trans = "log10", high = "blue", low = "red") +
+  labs(title = "GO Biological Process: Genes with DF2-only peaks only")
+
+shared_BP <- enrichGO(gene     = gene_cats %>% filter(category %in% c("All Shared", "Some Shared")) %>% pull(name),
+                OrgDb         = org.Hs.eg.db,
+                keyType       = 'SYMBOL',
+                ont           = "BP",
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 0.01,
+                qvalueCutoff  = 0.05,
+                readable = FALSE)
+
+dotplot(shared_BP) +
+  scale_color_gradient(trans = "log10", high = "blue", low = "red") +
+  labs(title = "GO Biological Process: Genes with shared peaks")
+  
+  
+# gene_list <- list(
+#   shared = gene_cats %>% filter(category %in% c("All Shared", "Some Shared")) %>% pull(name),
+#   df2_only = gene_cats %>% filter(category == "DF2 Only") %>% pull(name)
+# )
+# 
+# cat_MF <- compareCluster(gene_list, fun = "enrichGO",
+#                            OrgDb = org.Hs.eg.db,
+#                            keyType       = 'SYMBOL',
+#                            ont           = "MF",
+#                            pAdjustMethod = "BH",
+#                            pvalueCutoff  = 0.01,
+#                            qvalueCutoff  = 0.05,
+#                            readable = FALSE)
+# dotplot(cat_MF)
+# 
+# cat_CC <- compareCluster(gene_list, fun = "enrichGO",
+#                            OrgDb = org.Hs.eg.db,
+#                            keyType       = 'SYMBOL',
+#                            ont           = "CC",
+#                            pAdjustMethod = "BH",
+#                            pvalueCutoff  = 0.01,
+#                            qvalueCutoff  = 0.05,
+#                            readable = FALSE)
+# dotplot(cat_CC, showCategory = 20) +
+#   scale_color_gradient(trans = "log10", high = "blue", low = "red")
+# 
+# cat_BP <- compareCluster(gene_list, fun = "enrichGO",
+#                            OrgDb = org.Hs.eg.db,
+#                            keyType       = 'SYMBOL',
+#                            ont           = "BP",
+#                            pAdjustMethod = "BH",
+#                            pvalueCutoff  = 0.01,
+#                            qvalueCutoff  = 0.05,
+#                            readable = FALSE)
+# dotplot(cat_BP, showCategory = 20) +
+#   scale_color_gradient(trans = "log10", high = "blue", low = "red")
+
+```
 
 ```{r}
 sessionInfo()
