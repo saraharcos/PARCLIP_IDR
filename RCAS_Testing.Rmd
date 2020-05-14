@@ -259,53 +259,53 @@ ribo %>%
   scale_x_continuous(limits = c(-1.5, 1.5))
 
 
-# ribo %>%
-#   left_join(all_peaks, by = c("Gene" = "name")) %>%
-#   filter(df2_only_frac < 1) %>%
-#   mutate(category = case_when(
-#     df2_only_frac < 0.25 ~ " < 25% Free",
-#     df2_only_frac >= 0.25 & df2_only_frac < 0.5 ~ "25%-50% Free",
-#     df2_only_frac >= 0.5 & df2_only_frac < 0.75 ~ "50%-75% Free",
-#     df2_only_frac >= 0.75 ~ " > 75% Free",
-#     is.na(df2_only_frac) ~ "Non-target"
-#   )) %>%
-#   ggplot(aes(x = `Translation Efficiency`)) +
-#   stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
-#   scale_x_continuous(limits = c(-1.5, 1.5))
+ribo %>%
+  left_join(all_peaks, by = c("Gene" = "name")) %>%
+  mutate(category = case_when(
+    df2_only_frac < 0.25 ~ " < 25% Free",
+    df2_only_frac >= 0.25 & df2_only_frac <= 0.5 ~ "25%-50% Free",
+    df2_only_frac > 0.5 & df2_only_frac < 0.75 ~ "50%-75% Free",
+    df2_only_frac >= 0.75 & df2_only_frac < 1~ " > 75% Free",
+    df2_only_frac == 1 ~ "All Free",
+    is.na(df2_only_frac) ~ "Non-target"
+  )) %>%
+  ggplot(aes(x = `Translation Efficiency`)) +
+  stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
+  scale_x_continuous(limits = c(-1.5, 1.5))
 # 
-# ribo %>%
-#   left_join(all_peaks, by = c("Gene" = "name")) %>%
-#   mutate(category = case_when(
-#     df2_only_frac < 0.5 ~ " < 50% Free",
-#     df2_only_frac >= 0.5 ~ " > 50% Free",
-#     is.na(df2_only_frac) ~ "Non-target"
-#   )) %>%
-#   ggplot(aes(x = `Translation Efficiency`)) +
-#   stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
-#   scale_x_continuous(limits = c(-1.5, 1.5))
-# 
-# ribo %>%
-#   left_join(all_peaks, by = c("Gene" = "name")) %>%
-#   #filter(df2_only_frac < 1) %>%
-#   mutate(category = case_when(
-#     df2_only_frac == 0  ~ "All shared",
-#     df2_only_frac > 0 & df2_only_frac < 0.25 ~ " < 25% Free",
-#     df2_only_frac >= 0.25 & df2_only_frac < 0.5 ~ "25%-50% Free",
-#     df2_only_frac >= 0.5 & df2_only_frac < 0.75 ~ "50%-75% Free",
-#     df2_only_frac >= 0.75  & df2_only_frac < 1 ~ " > 75% Free",
-#     df2_only_frac == 1 ~ "All free",
-#     is.na(df2_only_frac) ~ "Non-target"
-#   )) %>%
-#   mutate(category = factor(category, levels = c("All shared",
-#                                                 " < 25% Free",
-#                                                 "25%-50% Free",
-#                                                 "50%-75% Free",
-#                                                 " > 75% Free",
-#                                                 "All free",
-#                                                 "Non-target"))) %>%
-#   ggplot(aes(x = category, y = `Translation Efficiency`)) +
-#   geom_violin() +
-#   geom_boxplot(size = 0.5, width = 0.2)
+ribo %>%
+  left_join(all_peaks, by = c("Gene" = "name")) %>%
+  mutate(category = case_when(
+    df2_only_frac <= 0.5 ~ " < 50% Free",
+    df2_only_frac > 0.5 ~ " > 50% Free",
+    is.na(df2_only_frac) ~ "Non-target"
+  )) %>%
+  ggplot(aes(x = `Translation Efficiency`)) +
+  stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
+  scale_x_continuous(limits = c(-1.5, 1.5))
+
+ribo %>%
+  left_join(all_peaks, by = c("Gene" = "name")) %>%
+  #filter(df2_only_frac < 1) %>%
+  mutate(category = case_when(
+    df2_only_frac == 0  ~ "All shared",
+    df2_only_frac > 0 & df2_only_frac < 0.25 ~ " < 25% Free",
+    df2_only_frac >= 0.25 & df2_only_frac <= 0.5 ~ "25%-50% Free",
+    df2_only_frac > 0.5 & df2_only_frac < 0.75 ~ "50%-75% Free",
+    df2_only_frac >= 0.75  & df2_only_frac < 1 ~ " > 75% Free",
+    df2_only_frac == 1 ~ "All free",
+    is.na(df2_only_frac) ~ "Non-target"
+  )) %>%
+  mutate(category = factor(category, levels = c("All shared",
+                                                " < 25% Free",
+                                                "25%-50% Free",
+                                                "50%-75% Free",
+                                                " > 75% Free",
+                                                "All free",
+                                                "Non-target"))) %>%
+  ggplot(aes(x = category, y = `Translation Efficiency`)) +
+  geom_violin() +
+  geom_boxplot(size = 0.5, width = 0.2)
 
 ribo %>%
   left_join(all_peaks, by = c("Gene" = "name")) %>%
