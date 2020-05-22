@@ -161,6 +161,46 @@ for (i in 1:length(motifResults_n$motifs)) {
 }
 ```
 
+#Gene types
+```{r}
+df2_df %>%
+  dplyr::select(seqnames, start, end, name, width, strand) %>%
+  write_tsv("df2.bed", col_names = FALSE)
+
+runReport(queryFilePath = "df2.bed", gffFilePath = '~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf',
+          motifAnalysis = FALSE,
+          goAnalysis = FALSE)
+
+overlaps <- as.data.table(queryGff(queryRegions = queryRegions, gffData = gff))
+
+
+biotype_col <- grep('gene_biotype', colnames(overlaps), value = T)
+df <- overlaps[,length(unique(queryIndex)), by = biotype_col]
+colnames(df) <- c("feature", "count")
+df$percent <- round(df$count / length(queryRegions) * 100, 1)
+df <- df[order(count, decreasing = TRUE)]
+ggplot2::ggplot(df, aes(x = reorder(feature, -percent), y = percent)) + 
+  geom_bar(stat = 'identity', aes(fill = feature)) + 
+  geom_label(aes(y = percent + 0.5), label = df$count) + 
+  labs(x = 'transcript feature', y = paste0('percent overlap (n = ', length(queryRegions), ')')) + 
+  theme_bw(base_size = 14) + 
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+
+#Gene regions
+```{r}
+
+```
+
+
+#Metagene
+```{r}
+
+
+```
+
+
 # Ribosome profiling test
  - Genes with no m6A peaks or DF2 peaks
  - Genes with DF2 peaks but no m6A peaks
