@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = FALSE)
 library(tidyverse)
 library(RCAS)
 library(readxl)
-#BiocManager::install("TxDb.Hsapiens.UCSC.hg19.knownGene")
+#devtools::install_github('BIMSBbioinfo/RCAS')
 #BiocManager::install("org.Hs.eg.db")
 
 library(GenomicFeatures)
@@ -41,8 +41,8 @@ r3_bw3 <- readRDS("~/files/PARCLIP_IDR/data/df2_rep3.rda")
 
 m6A_r1 <- readRDS("~/files/PARCLIP_IDR/data/m6A_rep1.rda")
 m6A_r2 <- readRDS("~/files/PARCLIP_IDR/data/m6A_rep2.rda")
-#m6A_r1_q0.2 <- readRDS("~/files/PARCLIP_IDR/data/m6A_rep1_q0.2.rda")
-#m6A_r2_q0.2 <- readRDS("~/files/PARCLIP_IDR/data/m6A_rep2_q0.2.rda")
+m6A_r1_q0.2 <- readRDS("~/files/PARCLIP_IDR/data/m6A_rep1_q0.2.rda")
+m6A_r2_q0.2 <- readRDS("~/files/PARCLIP_IDR/data/m6A_rep2_q0.2.rda")
 
 #m6A_overlaps <- readRDS("~/files/PARCLIP_IDR/data/m6A_overlaps.rda")
 
@@ -77,6 +77,51 @@ m6A <- GRanges(seqnames = m6A_r1$X1[m6A_ov$queryHits], IRanges(start = m6A_r1$X2
   keepStandardChromosomes(pruning.mode="coarse")
 
 ```
+
+#Look at low scoring m6A peaks to see if they overlap better
+```{r}
+m6A_rep1_q <- GRanges(seqnames = m6A_r1_q0.2$X1, IRanges(start = m6A_r1_q0.2$X2, end = m6A_r1_q0.2$X3)) %>%
+  keepStandardChromosomes(pruning.mode="coarse")
+m6A_rep2_q <- GRanges(seqnames = m6A_r2_q0.2$X1, IRanges(start = m6A_r2_q0.2$X2, end = m6A_r2_q0.2$X3)) %>%
+  keepStandardChromosomes(pruning.mode="coarse")
+
+m6A_ov_q <- findOverlaps(m6A_rep1_q, m6A_rep2_q, maxgap = 1) %>%
+  as_tibble()
+
+m6A_q <- GRanges(seqnames = m6A_r1_q0.2$X1[m6A_ov_q$queryHits], IRanges(start = m6A_r1_q0.2$X2[m6A_ov_q$queryHits], end = m6A_r1_q0.2$X3[m6A_ov_q$queryHits])) %>%
+  keepStandardChromosomes(pruning.mode="coarse")
+
+df2_m6A_q <- subsetByOverlaps(df2, m6A_q) %>%
+  as_tibble() %>%
+  mutate(peakID = paste(seqnames, start, end, sep = "_")) %>%
+  filter(name != "")
+
+df2 %>% as_tibble() %>% dim()
+
+m6A %>% as_tibble() %>% dim()
+
+m6A_q %>% as_tibble() %>% dim()
+
+df2_m6A %>% as_tibble() %>% dim()
+
+df2_m6A_q %>% as_tibble() %>% dim()
+
+
+
+m6A_df2_q <- subsetByOverlaps(m6A_q, df2) %>%
+  as_tibble()
+
+m6A_df2 <- subsetByOverlaps(m6A, df2) %>%
+  as_tibble()
+
+m6A_df2 %>% as_tibble() %>% dim()
+
+m6A_df2_q %>% as_tibble() %>% dim()
+
+```
+
+
+
 
 #Get tally for each gene of m6A sites, DF2 sites, and shared sites
  - First annotate DF2 sites by presence/absence of m6A
@@ -119,85 +164,186 @@ ggplot(all_peaks, aes(x = df2_only)) +
 
 #Motifs
 ```{r, eval = FALSE}
-df2_m6A %>%
-  filter(m6A == "m6A") %>%
-  dplyr::select(Chromosome, Start, End, r3_name, T2Cfraction) %>%
+df2_df %>%
+  filter(peakID %in% df2_m6A$peakID) %>%
+  dplyr::select(seqnames, start, end, name, width, strand) %>%
   write_tsv("df2_m6A.bed", col_names = FALSE)
 
 tb <- importBed('df2_m6A.bed')
-tg <- importGtf('~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf')
 
-motifResults <- runMotifRG(queryRegions = tb, 
-                           resizeN = 15,
-                           genomeVersion = 'hg19', 
-                           motifN = 3, nCores = 8)
+motifResults <- runMotifDiscovery(queryRegions = tb, 
+                           resizeN = 0, sampleN = 10000,
+                           genomeVersion = 'hg19', motifWidth = 6,
+                           motifN = 4, nCores = 4)
 
-par(mfrow = c(1,2), mar = c(2,2,2,2))
-for (i in 1:length(motifResults$motifs)) {
-  motifPattern <- motifResults$motifs[[i]]@pattern
-  motifRG::plotMotif(match = motifResults$motifs[[i]]@match$pattern, 
-                     main = paste0('Motif-',i,': ',motifPattern),
-                     entropy = TRUE)
-}
+ggseqlogo::ggseqlogo(motifResults$matches_query)
 
-df2_m6A %>%
-  filter(m6A != "m6A") %>%
-  dplyr::select(Chromosome, Start, End, r3_name, T2Cfraction) %>%
+df2_df %>%
+  filter(!(peakID %in% df2_m6A$peakID)) %>%
+  dplyr::select(seqnames, start, end, name, width, strand) %>%
   write_tsv("df2_no_m6A.bed", col_names = FALSE)
 
 tb_n <- importBed('df2_no_m6A.bed')
 
-motifResults_n <- runMotifRG(queryRegions = tb_n, 
-                           resizeN = 15,
-                           genomeVersion = 'hg19', 
-                           motifN = 3, nCores = 8)
+motifResults_n <- runMotifDiscovery(queryRegions = tb_n, 
+                           resizeN = 0, sampleN = 10000,
+                           genomeVersion = 'hg19', motifWidth = 6,
+                           motifN = 4, nCores = 4)
 
-par(mfrow = c(1,2), mar = c(2,2,2,2))
-for (i in 1:length(motifResults_n$motifs)) {
-  motifPattern_n <- motifResults_n$motifs[[i]]@pattern
-  motifRG::plotMotif(match = motifResults_n$motifs[[i]]@match$pattern, 
-                     main = paste0('Motif-',i,': ',motifPattern_n),
-                     entropy = TRUE)
-}
+ggseqlogo::ggseqlogo(motifResults_n$matches_query)
 ```
 
-#Gene types
+#Metagene
 ```{r}
-df2_df %>%
-  dplyr::select(seqnames, start, end, name, width, strand) %>%
-  write_tsv("df2.bed", col_names = FALSE)
+gff <- importGtf(filePath = "~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf")
+txdbFeatures <- getTxdbFeaturesFromGRanges(gff)
 
-runReport(queryFilePath = "df2.bed", gffFilePath = '~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf',
-          motifAnalysis = FALSE,
-          goAnalysis = FALSE)
+cvgList <- calculateCoverageProfileList(queryRegions = tb, 
+                                        targetRegionsList = txdbFeatures, 
+                                        sampleN = 10000)
 
-overlaps <- as.data.table(queryGff(queryRegions = queryRegions, gffData = gff))
+# ggplot2::ggplot(cvgList, aes(x = bins, y = meanCoverage)) + 
+#   geom_ribbon(fill = 'lightgreen', 
+#               aes(ymin = meanCoverage - standardError * 1.96, 
+#                   ymax = meanCoverage + standardError * 1.96)) + 
+#   geom_line(color = 'black') + theme_bw(base_size = 14) +
+#   facet_wrap( ~ feature, ncol = 3) 
+
+cvgList_tx <- cvgList %>%
+  filter(feature  == "transcripts")
+
+ggplot2::ggplot(cvgList_tx, aes(x = bins, y = meanCoverage)) + 
+  geom_ribbon(fill = 'steelblue', alpha = 0.4,
+              aes(ymin = meanCoverage - standardError * 1.96, 
+                  ymax = meanCoverage + standardError * 1.96)) + 
+  geom_line(color = 'black', size = 0.5) + theme_bw(base_size = 14)
 
 
-biotype_col <- grep('gene_biotype', colnames(overlaps), value = T)
-df <- overlaps[,length(unique(queryIndex)), by = biotype_col]
-colnames(df) <- c("feature", "count")
-df$percent <- round(df$count / length(queryRegions) * 100, 1)
-df <- df[order(count, decreasing = TRUE)]
-ggplot2::ggplot(df, aes(x = reorder(feature, -percent), y = percent)) + 
-  geom_bar(stat = 'identity', aes(fill = feature)) + 
-  geom_label(aes(y = percent + 0.5), label = df$count) + 
-  labs(x = 'transcript feature', y = paste0('percent overlap (n = ', length(queryRegions), ')')) + 
-  theme_bw(base_size = 14) + 
-  theme(axis.text.x = element_text(angle = 90))
+cvgList_n <- calculateCoverageProfileList(queryRegions = tb_n, 
+                                        targetRegionsList = txdbFeatures, 
+                                        sampleN = 10000)
+
+
+cvgList_tx_n <- cvgList_n %>%
+  filter(feature  == "transcripts")
+
+ggplot2::ggplot(cvgList_tx_n, aes(x = bins, y = meanCoverage)) + 
+  geom_ribbon(fill = 'steelblue', alpha = 0.4,
+              aes(ymin = meanCoverage - standardError * 1.96, 
+                  ymax = meanCoverage + standardError * 1.96)) + 
+  geom_line(color = 'black', size = 0.5) + theme_bw(base_size = 14)
+
+cvgList_all <- bind_rows(list("m6A-modified" = cvgList_tx, "Unmodified" = cvgList_tx_n), .id = "m6A")
+
+ggplot2::ggplot(cvgList_all, aes(x = bins, y = meanCoverage)) + 
+  geom_ribbon(fill = 'steelblue', alpha = 0.4,
+              aes(ymin = meanCoverage - standardError * 1.96, 
+                  ymax = meanCoverage + standardError * 1.96)) + 
+  geom_line(color = 'black', size = 0.5) + theme_bw(base_size = 14) +
+  facet_wrap( ~ m6A)
+
 ```
 
 
 #Gene regions
 ```{r}
+summary <- summarizeQueryRegions(queryRegions = tb, 
+                                 txdbFeatures = txdbFeatures)
 
+df <- data.frame(summary)
+df$percent <- round((df$count / length(tb)), 3) * 100
+df$feature <- rownames(df)
+df <- df %>% filter(feature %in% c("exons", "introns", "threeUTRs",
+                                   "fiveUTRs", "cds"))
+ggplot2::ggplot(df, aes(x = reorder(feature, -percent), y = percent)) + 
+  geom_bar(stat = 'identity', aes(fill = feature)) + 
+  scale_fill_brewer(palette = "Accent") +
+  geom_label(aes(y = percent + 3), label = df$count) + 
+  labs(x = 'transcript feature', y = paste0('percent overlap (n = ', length(tb), ')')) +
+  theme_bw(base_size = 14) + 
+  theme(axis.text.x = element_text(angle = 90))
+
+summary_n <- summarizeQueryRegions(queryRegions = tb_n, 
+                                 txdbFeatures = txdbFeatures)
+
+df_n <- data.frame(summary_n)
+df_n$percent <- round((df_n$count / length(tb_n)), 3) * 100
+df_n$feature <- rownames(df_n)
+df_n <- df_n %>% filter(feature %in% c("exons", "introns", "threeUTRs",
+                                   "fiveUTRs", "cds"))
+ggplot2::ggplot(df_n, aes(x = reorder(feature, -percent), y = percent)) + 
+  geom_bar(stat = 'identity', aes(fill = feature)) + 
+  scale_fill_brewer(palette = "Accent") +
+  geom_label(aes(y = percent + 3), label = df_n$count) + 
+  labs(x = 'transcript feature', y = paste0('percent overlap (n = ', length(tb_n), ')')) +
+  theme_bw(base_size = 14) + 
+  theme(axis.text.x = element_text(angle = 90))
+
+
+df_all <- bind_rows(list("m6A-modified" = df, "Unmodified" = df_n), .id = "m6A")
+
+ggplot2::ggplot(df_all, aes(x = factor(feature, levels = c("exons", "introns",
+                                                           "fiveUTRs", "cds", "threeUTRs")), y = percent)) + 
+  geom_bar(stat = 'identity', aes(fill = feature)) + 
+  scale_fill_brewer(palette = "Accent") +
+  geom_label(aes(y = percent + 3), label = df_all$count) + 
+  labs(x = 'transcript feature', y = "percent overlap") +
+  theme_bw(base_size = 14) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none") +
+  facet_wrap( ~ m6A)
 ```
 
 
-#Metagene
+#Gene types
 ```{r}
 
+overlaps <- as.data.table(queryGff(queryRegions = tb, gffData = gff))
 
+biotype_col <- grep('gene_biotype', colnames(overlaps), value = T)
+dfv <- overlaps[,length(unique(queryIndex)), by = biotype_col]
+colnames(dfv) <- c("feature", "count")
+dfv$percent <- round(dfv$count / length(tb) * 100, 1)
+dfv <- dfv[order(count, decreasing = TRUE)]
+dfv <- dfv %>% filter(feature %in% c("protein_coding", "miRNA", "lincRNA", "snoRNA", 
+                                   "snRNA", "rRNA", "pseudogene"))
+ggplot2::ggplot(dfv, aes(x = reorder(feature, -percent), y = percent)) + 
+  geom_bar(stat = 'identity', aes(fill = feature)) + 
+  geom_label(aes(y = percent + 0.5), label = dfv$count) + 
+  scale_fill_brewer(palette = "Accent") +
+  labs(x = 'transcript feature', y = paste0('percent overlap (n = ', length(tb), ')')) + 
+  theme_bw(base_size = 14) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+overlaps_n <- as.data.table(queryGff(queryRegions = tb_n, gffData = gff))
+
+dfv_n <- overlaps_n[,length(unique(queryIndex)), by = biotype_col]
+colnames(dfv_n) <- c("feature", "count")
+dfv_n$percent <- round(dfv_n$count / length(tb_n) * 100, 1)
+dfv_n <- dfv_n[order(count, decreasing = TRUE)]
+dfv_n <- dfv_n %>% filter(feature %in% c("protein_coding", "miRNA", "lincRNA", "snoRNA", 
+                                   "snRNA", "rRNA", "pseudogene"))
+ggplot2::ggplot(dfv_n, aes(x = reorder(feature, -percent), y = percent)) + 
+  geom_bar(stat = 'identity', aes(fill = feature)) + 
+  geom_label(aes(y = percent + 0.5), label = dfv_n$count) + 
+  scale_fill_brewer(palette = "Accent") +
+  labs(x = 'transcript feature', y = paste0('percent overlap (n = ', length(tb_n), ')')) + 
+  theme_bw(base_size = 14) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+dfv_all <- bind_rows(list("m6A-modified" = dfv, "Unmodified" = dfv_n), .id = "m6A")
+
+
+ggplot2::ggplot(dfv_all, aes(x = reorder(feature, -percent), y = percent)) + 
+  geom_bar(stat = 'identity', aes(fill = feature)) + 
+  geom_label(aes(y = percent + 0.5), label = dfv_all$count) + 
+  scale_fill_brewer(palette = "Accent") +
+  labs(x = 'gene type', y = 'percent overlap') + 
+  theme_bw(base_size = 14) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none") +
+  facet_wrap( ~ m6A)
 ```
 
 
