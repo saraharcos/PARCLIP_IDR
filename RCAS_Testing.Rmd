@@ -13,6 +13,7 @@ library(RCAS)
 library(readxl)
 #devtools::install_github('BIMSBbioinfo/RCAS')
 #BiocManager::install("org.Hs.eg.db")
+#BiocManager::install("clusterProfiler")
 
 library(GenomicFeatures)
 library(clusterProfiler)
@@ -347,6 +348,94 @@ ggplot2::ggplot(dfv_all, aes(x = reorder(feature, -percent), y = percent)) +
 ```
 
 
+#Ribosome profiling for publication
+```{r}
+ribo <- read_xlsx("~/files/PARCLIP_IDR/data/GSE49339_C-Ribosome_profiling.xlsx", sheet = 3, skip = 3, 
+                  col_names = c("Gene", "Ribosome-bound fragments", "Poly(A)+ mRNA input", "Translation Efficiency"))
+
+ribo_groups <- ribo %>%
+  left_join(all_peaks, by = c("Gene" = "name")) %>%
+  mutate(category = case_when(
+    df2_only_frac <= 0.5 ~ "Most peaks are m6A-modified",
+    df2_only_frac > 0.5 ~ "Most peaks are unmodified",
+    is.na(df2_only_frac) ~ "Non-target"
+  ))
+
+ribo_free <- ribo_groups %>%
+  filter(category != "Most peaks are m6A-modified")
+
+wilcox.test(`Translation Efficiency` ~ category, data = ribo_free)
+
+ribo_shared <- ribo_groups %>%
+  filter(category != "Most peaks are unmodified")
+
+wilcox.test(`Translation Efficiency` ~ category, data = ribo_shared)
+
+ribo_compare <- ribo_groups %>%
+  filter(category != "Non-target")
+
+wilcox.test(`Translation Efficiency` ~ category, data = ribo_compare)
+
+ggplot(ribo_groups, aes(x = `Translation Efficiency`)) +
+  stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
+  scale_x_continuous(limits = c(-1.5, 1.5)) +
+  annotate("text", x = -0.5, y = 0.92, label = "p = 2.272 * 10^-9") +
+  annotate("text", x = -0.5, y = 0.85, label = "(Mostly m6A-modified vs.") +
+  annotate("text", x = -0.5, y = 0.8, label = "Mostly Unmodified)") +
+  ylab("Cumulative fraction") +
+  xlab("Translation efficiency [log2(siYTHDF2/siControl)]") +
+  labs(color = "Transcript category") +
+  ggtitle("Translation efficiency of YTHDF2 targets by m6A-modification state") +
+  theme_minimal() +
+  theme(legend.position="bottom")
+  
+```
+
+#Half life for publication
+```{r}
+hl_rep1 <- read_xlsx("~/files/PARCLIP_IDR/data/GSE49339_E-mRNA_Lifetime-rep2.xlsx", sheet = 4, skip = 1) %>%
+  dplyr::select(Gene, `log2(siYTHDF2/siControl)`)
+
+hl_groups <- hl_rep1 %>%
+  left_join(all_peaks, by = c("Gene" = "name")) %>%
+  mutate(category = case_when(
+    df2_only_frac <= 0.5 ~ "Most peaks are m6A-modified",
+    df2_only_frac > 0.5 ~ "Most peaks are unmodified",
+    is.na(df2_only_frac) ~ "Non-target"
+  ))
+
+hl_free <- hl_groups %>%
+  filter(category != "Most peaks are m6A-modified")
+
+wilcox.test(`log2(siYTHDF2/siControl)` ~ category, data = hl_free)
+
+hl_shared <- hl_groups %>%
+  filter(category != "Most peaks are unmodified")
+
+wilcox.test(`log2(siYTHDF2/siControl)` ~ category, data = hl_shared)
+
+hl_compare <- hl_groups %>%
+  filter(category != "Non-target")
+
+wilcox.test(`log2(siYTHDF2/siControl)` ~ category, data = hl_compare)
+
+ggplot(hl_groups, aes(x = `log2(siYTHDF2/siControl)`)) +
+  stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
+  scale_x_continuous(limits = c(-1.5, 1.5)) +
+  annotate("text", x = -0.5, y = 0.92, label = "p = 1.111 * 10^-8") +
+  annotate("text", x = -0.5, y = 0.85, label = "(Mostly m6A-modified vs.") +
+  annotate("text", x = -0.5, y = 0.8, label = "Mostly Unmodified)") +
+  ylab("Cumulative fraction") +
+  xlab("RNA half-life [log2(siYTHDF2/siControl)]") +
+  labs(color = "Transcript category") +
+  ggtitle("Half-life of YTHDF2 targets by m6A-modification state") +
+  theme_minimal() +
+  theme(legend.position="bottom")
+```
+
+
+
+
 # Ribosome profiling test
  - Genes with no m6A peaks or DF2 peaks
  - Genes with DF2 peaks but no m6A peaks
@@ -459,6 +548,7 @@ ribo %>%
   stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
   scale_x_continuous(limits = c(-1.5, 1.5))
 # 
+
 ribo %>%
   left_join(all_peaks, by = c("Gene" = "name")) %>%
   mutate(category = case_when(
@@ -544,13 +634,13 @@ runReport('df2_m6A.bed', '~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff
 
 gene_cats <- all_peaks %>%
   mutate(category = case_when(
-    df2_only_frac == 0 ~ "All Shared",
-    df2_only_frac < 1 & df2_only_frac > 0 ~ "Some Shared",
-    df2_only_frac == 1 ~ "DF2 Only"
+    df2_only_frac <= 0.5 ~ "Most peaks are m6A-modified",
+    df2_only_frac > 0.5 ~ "Most peaks are unmodified",
+    is.na(df2_only_frac) ~ "Non-target"
   ))
 
 
-df2_only_MF <- enrichGO(gene     = gene_cats %>% filter(category == "DF2 Only") %>% pull(name),
+df2_only_MF <- enrichGO(gene     = gene_cats %>% filter(category == "Most peaks are unmodified") %>% pull(name),
                 OrgDb         = org.Hs.eg.db,
                 keyType       = 'SYMBOL',
                 ont           = "MF",
@@ -559,11 +649,14 @@ df2_only_MF <- enrichGO(gene     = gene_cats %>% filter(category == "DF2 Only") 
                 qvalueCutoff  = 0.05,
                 readable = FALSE)
 
-dotplot(df2_only_MF) +
-  scale_color_gradient(trans = "log10", high = "blue", low = "red") +
-  labs(title = "GO Molecular Function: Genes with DF2-only peaks only")
 
-shared_MF <- enrichGO(gene     = gene_cats %>% filter(category %in% c("All Shared", "Some Shared")) %>% pull(name),
+barplot(df2_only_MF, showCategory = 6) +
+  scale_color_gradient(trans = "log10", high = "blue", low = "red") +
+  labs(title = "GO Molecular Function",
+       subtitle = "Genes with most YTHDF2 peaks unmodified")
+ggsave("~/files/figures/df2_only_mf.pdf")
+
+shared_MF <- enrichGO(gene     = gene_cats %>% filter(category == "Most peaks are m6A-modified") %>% pull(name),
                 OrgDb         = org.Hs.eg.db,
                 keyType       = 'SYMBOL',
                 ont           = "MF",
@@ -572,12 +665,13 @@ shared_MF <- enrichGO(gene     = gene_cats %>% filter(category %in% c("All Share
                 qvalueCutoff  = 0.05,
                 readable = FALSE)
 
-dotplot(shared_MF) +
+barplot(shared_MF, showCategory = 6) +
   scale_color_gradient(trans = "log10", high = "blue", low = "red") +
-  labs(title = "GO Molecular Function: Genes with shared peaks")
+  labs(title = "GO Molecular Function",
+       subtitle = "Genes with most YTHDF2 peaks m6A-modified")
+ggsave("~/files/figures/df2_m6a_mf.pdf")
 
-
-df2_only_CC <- enrichGO(gene     = gene_cats %>% filter(category == "DF2 Only") %>% pull(name),
+df2_only_CC <- enrichGO(gene     = gene_cats %>% filter(category == "Most peaks are unmodified") %>% pull(name),
                 OrgDb         = org.Hs.eg.db,
                 keyType       = 'SYMBOL',
                 ont           = "CC",
@@ -586,11 +680,13 @@ df2_only_CC <- enrichGO(gene     = gene_cats %>% filter(category == "DF2 Only") 
                 qvalueCutoff  = 0.05,
                 readable = FALSE)
 
-dotplot(df2_only_CC) +
+barplot(df2_only_CC, showCategory = 6) +
   scale_color_gradient(trans = "log10", high = "blue", low = "red") +
-  labs(title = "GO Cellular Component: Genes with DF2-only peaks only")
+  labs(title = "GO Cellular Component",
+       subtitle = "Genes with most YTHDF2 peaks unmodified")
+ggsave("~/files/figures/df2_only_cc.pdf")
 
-shared_CC <- enrichGO(gene     = gene_cats %>% filter(category %in% c("All Shared", "Some Shared")) %>% pull(name),
+shared_CC <- enrichGO(gene     = gene_cats %>% filter(category == "Most peaks are m6A-modified") %>% pull(name),
                 OrgDb         = org.Hs.eg.db,
                 keyType       = 'SYMBOL',
                 ont           = "CC",
@@ -599,11 +695,13 @@ shared_CC <- enrichGO(gene     = gene_cats %>% filter(category %in% c("All Share
                 qvalueCutoff  = 0.05,
                 readable = FALSE)
 
-dotplot(shared_CC) +
+barplot(shared_CC, showCategory = 6) +
   scale_color_gradient(trans = "log10", high = "blue", low = "red") +
-  labs(title = "GO Cellular Component: Genes with shared peaks")
+  labs(title = "GO Cellular Component",
+       subtitle = "Genes with most YTHDF2 peaks m6A-modified")
+ggsave("~/files/figures/df2_m6a_cc.pdf")
 
-df2_only_BP <- enrichGO(gene     = gene_cats %>% filter(category == "DF2 Only") %>% pull(name),
+df2_only_BP <- enrichGO(gene     = gene_cats %>% filter(category == "Most peaks are unmodified") %>% pull(name),
                 OrgDb         = org.Hs.eg.db,
                 keyType       = 'SYMBOL',
                 ont           = "BP",
@@ -612,11 +710,13 @@ df2_only_BP <- enrichGO(gene     = gene_cats %>% filter(category == "DF2 Only") 
                 qvalueCutoff  = 0.05,
                 readable = FALSE)
 
-dotplot(df2_only_BP) +
+barplot(df2_only_BP, showCategory = 6) +
   scale_color_gradient(trans = "log10", high = "blue", low = "red") +
-  labs(title = "GO Biological Process: Genes with DF2-only peaks only")
+  labs(title = "GO Biological Process",
+       subtitle = "Genes with most YTHDF2 peaks unmodified")
+ggsave("~/files/figures/df2_only_bp.pdf")
 
-shared_BP <- enrichGO(gene     = gene_cats %>% filter(category %in% c("All Shared", "Some Shared")) %>% pull(name),
+shared_BP <- enrichGO(gene     = gene_cats %>% filter(category == "Most peaks are m6A-modified") %>% pull(name),
                 OrgDb         = org.Hs.eg.db,
                 keyType       = 'SYMBOL',
                 ont           = "BP",
@@ -625,9 +725,11 @@ shared_BP <- enrichGO(gene     = gene_cats %>% filter(category %in% c("All Share
                 qvalueCutoff  = 0.05,
                 readable = FALSE)
 
-dotplot(shared_BP) +
+barplot(shared_BP, showCategory = 6) +
   scale_color_gradient(trans = "log10", high = "blue", low = "red") +
-  labs(title = "GO Biological Process: Genes with shared peaks")
+  labs(title = "GO Biological Process",
+       subtitle = "Genes with most YTHDF2 peaks m6A-modified")
+ggsave("~/files/figures/df2_m6a_bp.pdf")
   
   
 # gene_list <- list(
