@@ -161,6 +161,87 @@ ggplot(all_peaks, aes(x = df2_only)) +
   geom_bar()
 ```
 
+#Look at whether m6A/non-m6A YTHDF2 peaks are enriched for certain protein domains
+ - Using uniprot domains bed file downloaded from UCSC (hg19)
+```{r}
+uniprot <- read_tsv("~/files/uniprot_domains_hg19.bed",
+                    col_names = FALSE) %>%
+  dplyr::select(1:6)
+
+uniprot_g <- GRanges(seqnames = uniprot$X1, IRanges(start = uniprot$X2, end = uniprot$X3), name = uniprot$X4) %>%
+  keepStandardChromosomes(pruning.mode="coarse")
+
+df2_only_peaks <- df2_df %>%
+  mutate(PeakCat = case_when(
+    peakID %in% df2_m6A$peakID ~ "m6A_overlapped",
+    TRUE ~ "df2_only"
+  )) %>%
+  filter(PeakCat == "df2_only")
+
+df2_m6A_peaks <- df2_df %>%
+  mutate(PeakCat = case_when(
+    peakID %in% df2_m6A$peakID ~ "m6A_overlapped",
+    TRUE ~ "df2_only"
+  )) %>%
+  filter(PeakCat == "m6A_overlapped")
+
+df2_o <- GRanges(seqnames = df2_only_peaks$seqnames, IRanges(start = df2_only_peaks$start, end = df2_only_peaks$end)) %>%
+  keepStandardChromosomes(pruning.mode="coarse")
+
+df2_m <- GRanges(seqnames = df2_m6A_peaks$seqnames, IRanges(start = df2_m6A_peaks$start, end = df2_m6A_peaks$end)) %>%
+  keepStandardChromosomes(pruning.mode="coarse")
+
+domains_df2_o <- subsetByOverlaps(uniprot_g, df2_o) %>%
+  as_tibble() %>%
+  dplyr::select(name) %>%
+  group_by(name) %>%
+  tally() %>%
+  mutate(freq = n / sum(n)) %>%
+  top_n(20, freq)
+
+domains_df2_m <- subsetByOverlaps(uniprot_g, df2_m) %>%
+  as_tibble() %>%
+  dplyr::select(name) %>%
+  group_by(name) %>%
+  tally() %>%
+  mutate(freq = n / sum(n)) %>%
+  top_n(20, freq)
+
+domains_df2 <- bind_rows("DF2 Only" = domains_df2_o, "m6A-modified" = domains_df2_m, .id = "m6A status")
+
+ggplot2::ggplot(domains_df2, aes(x = reorder(name, n), y = n)) + 
+  geom_bar(stat = 'identity') + 
+  labs(x = 'Domain', y = "number overlapped with DF2 peaks") +
+  theme_bw(base_size = 14) + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  coord_flip() +
+  facet_wrap(~`m6A status`, scales = "free")
+
+
+ggplot2::ggplot(domains_df2_o, aes(x = reorder(name, freq), y = freq)) + 
+  geom_bar(stat = 'identity', fill = "steelblue", alpha = 0.7) + 
+  labs(x = 'Domain', y = "Proportion of domains overlapped with DF2 peaks",
+       title = "Domains overlapped by DF2 only peaks") +
+  theme_minimal() +
+  theme_bw(base_size = 14) + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  coord_flip()
+
+ggplot2::ggplot(domains_df2_m, aes(x = reorder(name, freq), y = freq)) + 
+  geom_bar(stat = 'identity', fill = "steelblue", alpha = 0.7) + 
+  labs(x = 'Domain', y = "Proportion of domains overlapped with DF2 peaks",
+       title = "Domains overlapped by DF2-m6A peaks") +
+  theme_minimal() +
+  theme_bw(base_size = 14) + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  coord_flip()
+
+
+
+```
+
+
+
 
 
 #Motifs
