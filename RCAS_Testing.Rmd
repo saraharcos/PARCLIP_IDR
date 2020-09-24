@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = FALSE)
 
 library(tidyverse)
-library(RCAS)
+#library(RCAS)
 library(readxl)
 #devtools::install_github('BIMSBbioinfo/RCAS')
 #BiocManager::install("org.Hs.eg.db")
@@ -56,26 +56,29 @@ m6A_r2_q0.2 <- readRDS("~/files/PARCLIP_IDR/data/m6A_rep2_q0.2.rda")
 ## Make everything in the same consistent format
  - GRanges
 ```{r}
-df2_rep2 <- GRanges(seqnames = r2_bw3$Chromosome, IRanges(start = r2_bw3$Start, end = r2_bw3$End), strand = r2_bw3$Strand, name = r2_bw3$Name) %>%
+df2_rep2 <- GRanges(seqnames = r2_bw3$Chromosome, IRanges(start = r2_bw3$Start, end = r2_bw3$End), strand = r2_bw3$Strand, name = r2_bw3$Name, score = r2_bw3$T2Cfraction) %>%
   keepStandardChromosomes(pruning.mode="coarse")
-df2_rep3 <- GRanges(seqnames = r3_bw3$Chromosome, IRanges(start = r3_bw3$Start, end = r3_bw3$End), strand = r3_bw3$Strand, name = r3_bw3$Name) %>%
+df2_rep3 <- GRanges(seqnames = r3_bw3$Chromosome, IRanges(start = r3_bw3$Start, end = r3_bw3$End), strand = r3_bw3$Strand, name = r3_bw3$Name, score = r3_bw3$T2Cfraction) %>%
   keepStandardChromosomes(pruning.mode="coarse")
 m6A_rep1 <- GRanges(seqnames = m6A_r1$X1, IRanges(start = m6A_r1$X2, end = m6A_r1$X3)) %>%
   keepStandardChromosomes(pruning.mode="coarse")
 m6A_rep2 <- GRanges(seqnames = m6A_r2$X1, IRanges(start = m6A_r2$X2, end = m6A_r2$X3)) %>%
   keepStandardChromosomes(pruning.mode="coarse")
 
-df2_ov <- findOverlaps(df2_rep2, df2_rep3, maxgap = 1) %>%
-  as_tibble()
+df2 <- df2_rep2[df2_rep2 %over% df2_rep3,]
+m6A <- m6A_rep2[m6A_rep2 %over% m6A_rep1,]
 
-df2 <- GRanges(seqnames = r3_bw3$Chromosome[df2_ov$subjectHits], IRanges(start = r3_bw3$Start[df2_ov$subjectHits], end = r3_bw3$End[df2_ov$subjectHits]), strand = r3_bw3$Strand[df2_ov$subjectHits], name = r3_bw3$Name[df2_ov$subjectHits]) %>%
-  keepStandardChromosomes(pruning.mode="coarse")
-
-m6A_ov <- findOverlaps(m6A_rep1, m6A_rep2, maxgap = 1) %>%
-  as_tibble()
-
-m6A <- GRanges(seqnames = m6A_r1$X1[m6A_ov$queryHits], IRanges(start = m6A_r1$X2[m6A_ov$queryHits], end = m6A_r1$X3[m6A_ov$queryHits])) %>%
-  keepStandardChromosomes(pruning.mode="coarse")
+# df2_ov <- findOverlaps(df2_rep2, df2_rep3, maxgap = 1) %>%
+#   as_tibble()
+# 
+# df2 <- GRanges(seqnames = r3_bw3$Chromosome[df2_ov$subjectHits], IRanges(start = r3_bw3$Start[df2_ov$subjectHits], end = r3_bw3$End[df2_ov$subjectHits]), strand = r3_bw3$Strand[df2_ov$subjectHits], name = r3_bw3$Name[df2_ov$subjectHits]) %>%
+#   keepStandardChromosomes(pruning.mode="coarse")
+# 
+# m6A_ov <- findOverlaps(m6A_rep1, m6A_rep2, maxgap = 1) %>%
+#   as_tibble()
+# 
+# m6A <- GRanges(seqnames = m6A_r1$X1[m6A_ov$queryHits], IRanges(start = m6A_r1$X2[m6A_ov$queryHits], end = m6A_r1$X3[m6A_ov$queryHits])) %>%
+#   keepStandardChromosomes(pruning.mode="coarse")
 
 ```
 
@@ -86,16 +89,21 @@ m6A_rep1_q <- GRanges(seqnames = m6A_r1_q0.2$X1, IRanges(start = m6A_r1_q0.2$X2,
 m6A_rep2_q <- GRanges(seqnames = m6A_r2_q0.2$X1, IRanges(start = m6A_r2_q0.2$X2, end = m6A_r2_q0.2$X3)) %>%
   keepStandardChromosomes(pruning.mode="coarse")
 
-m6A_ov_q <- findOverlaps(m6A_rep1_q, m6A_rep2_q, maxgap = 1) %>%
-  as_tibble()
+m6A_q <- m6A_rep2_q[m6A_rep2_q %over% m6A_rep1_q,]
 
-m6A_q <- GRanges(seqnames = m6A_r1_q0.2$X1[m6A_ov_q$queryHits], IRanges(start = m6A_r1_q0.2$X2[m6A_ov_q$queryHits], end = m6A_r1_q0.2$X3[m6A_ov_q$queryHits])) %>%
-  keepStandardChromosomes(pruning.mode="coarse")
+# m6A_ov_q <- findOverlaps(m6A_rep1_q, m6A_rep2_q, maxgap = 1) %>%
+#   as_tibble()
+# 
+# m6A_q <- GRanges(seqnames = m6A_r1_q0.2$X1[m6A_ov_q$queryHits], IRanges(start = m6A_r1_q0.2$X2[m6A_ov_q$queryHits], end = m6A_r1_q0.2$X3[m6A_ov_q$queryHits])) %>%
+#   keepStandardChromosomes(pruning.mode="coarse")
 
-df2_m6A_q <- subsetByOverlaps(df2, m6A_q) %>%
+df2_m6A_q <- df2[df2 %over% m6A_q,] %>%
   as_tibble() %>%
-  mutate(peakID = paste(seqnames, start, end, sep = "_")) %>%
-  filter(name != "")
+  mutate(peakID = paste(seqnames, start, end, sep = "_"))
+
+df2_m6A <- df2[df2 %over% m6A,] %>%
+  as_tibble() %>%
+  mutate(peakID = paste(seqnames, start, end, sep = "_"))
 
 df2 %>% as_tibble() %>% dim()
 
@@ -103,24 +111,72 @@ m6A %>% as_tibble() %>% dim()
 
 m6A_q %>% as_tibble() %>% dim()
 
-df2_m6A %>% as_tibble() %>% dim()
 
-df2_m6A_q %>% as_tibble() %>% dim()
+df2_non <- df2[!df2 %over% m6A,] %>% as_tibble()
+
+df2_non_q <- df2[!df2 %over% m6A_q,] %>% as_tibble()
+
+df2 %>% as_tibble() %>% dim()
+df2_m6A %>% dim()
+df2_non %>% dim()
+
+df2 %>% as_tibble() %>% dim()
+df2_m6A_q %>%  dim()
+df2_non_q %>% dim()
 
 
-
-m6A_df2_q <- subsetByOverlaps(m6A_q, df2) %>%
+m6A_df2_q <- m6A_q[m6A_q %over% df2,] %>%
   as_tibble()
 
-m6A_df2 <- subsetByOverlaps(m6A, df2) %>%
+m6A_df2 <- m6A[m6A %over% df2,] %>%
   as_tibble()
 
+m6A_df2_q_non <- m6A_q[!m6A_q %over% df2,] %>%
+  as_tibble()
+
+m6A_df2_non <- m6A[!m6A %over% df2,] %>%
+  as_tibble()
+
+m6A %>% as_tibble() %>% dim()
 m6A_df2 %>% as_tibble() %>% dim()
+m6A_df2_non %>% as_tibble() %>% dim()
 
+
+m6A_q %>% as_tibble() %>% dim()
 m6A_df2_q %>% as_tibble() %>% dim()
+m6A_df2_q_non %>% as_tibble() %>% dim()
 
 ```
 
+#Make distribution of T2C by m6A status plot
+```{r}
+df2_annotated <- bind_rows(list("m6A" = df2_m6A, "non-m6A" = df2_non), .id = "m6A_status")
+
+ggplot(df2_annotated, aes(y = score, x = m6A_status)) +
+  geom_violin(fill = "steelblue", alpha = 0.7) +
+  geom_boxplot(width = 0.03, alpha = 0.8, outlier.shape = NA) +
+  labs(title = "Distribution of T2C Fraction in YTHDF peaks, based on m6A status") +
+  theme_minimal() +
+  theme(panel.grid.minor = element_blank()) +
+  xlab("Modification state of YTHDF peaks") +
+  annotate("text", x = 1.5, y = 0.9, label = "p = 3.8 * 10^-7")
+
+wilcox.test(score ~ m6A_status, data = df2_annotated)
+
+#Above T2Cfraction of 0.20
+
+ggplot(df2_annotated %>% filter(score > 0.20), aes(y = score, x = m6A_status)) +
+  geom_violin(fill = "steelblue", alpha = 0.7) +
+  geom_boxplot(width = 0.03, alpha = 0.8, outlier.shape = NA) +
+  labs(title = "Distribution of T2C Fraction in YTHDF peaks, based on m6A status") +
+  theme_minimal() +
+  theme(panel.grid.minor = element_blank()) +
+  xlab("Modification state of YTHDF peaks") +
+  annotate("text", x = 1.5, y = 0.9, label = "p = 0.006333")
+
+wilcox.test(score ~ m6A_status, data = df2_annotated %>% filter(score > 0.20))
+
+```
 
 
 
@@ -134,80 +190,62 @@ m6A_df2_q %>% as_tibble() %>% dim()
 
 df2_df <- df2 %>%
   as_tibble() %>%
-  mutate(peakID = paste(seqnames, start, end, sep = "_")) %>%
-  filter(name != "")
+  mutate(peakID = paste(seqnames, start, end, sep = "_"))
 
-df2_m6A <- subsetByOverlaps(df2, m6A) %>%
+df2_m6A_df <- df2_m6A
   as_tibble() %>%
-  mutate(peakID = paste(seqnames, start, end, sep = "_")) %>%
-  filter(name != "")
+  mutate(peakID = paste(seqnames, start, end, sep = "_"))
   
-all_peaks <- df2_df %>%
-  mutate(PeakCat = case_when(
-    peakID %in% df2_m6A$peakID ~ "m6A_overlapped",
-    TRUE ~ "df2_only"
-  )) %>%
-  group_by(name, PeakCat) %>%
+all_peaks <- df2_annotated %>%
+  group_by(name, m6A_status) %>%
   tally() %>%
   group_by(name) %>%
   mutate(total_peaks = sum(n)) %>%
-  spread(key = PeakCat, value = n, fill = 0) %>%
-  mutate(df2_only_frac = df2_only / total_peaks)
+  spread(key = m6A_status, value = n, fill = 0) %>%
+  mutate(df2_only_frac = `non-m6A` / total_peaks)
 
 ggplot(all_peaks, aes(x = df2_only_frac)) +
   geom_bar()
 
-ggplot(all_peaks, aes(x = df2_only)) +
+ggplot(all_peaks, aes(x = `non-m6A`)) +
   geom_bar()
 ```
 
 #Look at whether m6A/non-m6A YTHDF2 peaks are enriched for certain protein domains
- - Using uniprot domains bed file downloaded from UCSC (hg19)
+ - Using uniprot domains file downloaded from UCSC (hg19)
+ - Come back and do by "functional" genes
 ```{r}
-uniprot <- read_tsv("~/files/uniprot_domains_hg19.bed",
-                    col_names = FALSE) %>%
-  dplyr::select(1:6)
+uniprot <- read_tsv("~/files/uniprot_domains_hg19.dms") %>%
+  filter(!str_detect(dbName, "Unreviewed") &
+           annotationType != "topological domain")
 
-uniprot_g <- GRanges(seqnames = uniprot$X1, IRanges(start = uniprot$X2, end = uniprot$X3), name = uniprot$X4) %>%
+uniprot_g <- GRanges(seqnames = uniprot$`#chrom`, IRanges(start = uniprot$chromStart, end = uniprot$chromEnd), name = uniprot$name) %>%
   keepStandardChromosomes(pruning.mode="coarse")
 
-df2_only_peaks <- df2_df %>%
-  mutate(PeakCat = case_when(
-    peakID %in% df2_m6A$peakID ~ "m6A_overlapped",
-    TRUE ~ "df2_only"
-  )) %>%
-  filter(PeakCat == "df2_only")
+df2_scored <- df2[df2$score > 0.1]
 
-df2_m6A_peaks <- df2_df %>%
-  mutate(PeakCat = case_when(
-    peakID %in% df2_m6A$peakID ~ "m6A_overlapped",
-    TRUE ~ "df2_only"
-  )) %>%
-  filter(PeakCat == "m6A_overlapped")
+df2_o <- df2_scored[!df2_scored %over% m6A,]
 
-df2_o <- GRanges(seqnames = df2_only_peaks$seqnames, IRanges(start = df2_only_peaks$start, end = df2_only_peaks$end)) %>%
-  keepStandardChromosomes(pruning.mode="coarse")
 
-df2_m <- GRanges(seqnames = df2_m6A_peaks$seqnames, IRanges(start = df2_m6A_peaks$start, end = df2_m6A_peaks$end)) %>%
-  keepStandardChromosomes(pruning.mode="coarse")
+df2_m <- df2_scored[df2_scored %over% m6A,]
 
-domains_df2_o <- subsetByOverlaps(uniprot_g, df2_o) %>%
+domains_df2_o <- uniprot_g[uniprot_g %over% df2_o,] %>%
   as_tibble() %>%
   dplyr::select(name) %>%
   group_by(name) %>%
   tally() %>%
   mutate(freq = n / sum(n)) %>%
-  top_n(20, freq)
+  top_n(10, freq)
 
-domains_df2_m <- subsetByOverlaps(uniprot_g, df2_m) %>%
+domains_df2_m <- uniprot_g[uniprot_g %over% df2_m,] %>%
   as_tibble() %>%
   dplyr::select(name) %>%
   group_by(name) %>%
   tally() %>%
   mutate(freq = n / sum(n)) %>%
-  top_n(20, freq)
+  top_n(10, freq)
 
-domains_df2 <- bind_rows("DF2 Only" = domains_df2_o, "m6A-modified" = domains_df2_m, .id = "m6A status")
+domains_df2 <- bind_rows("non-m6A" = domains_df2_o, "m6A-modified" = domains_df2_m, .id = "m6A status")
 
 ggplot2::ggplot(domains_df2, aes(x = reorder(name, n), y = n)) + 
   geom_bar(stat = 'identity') + 
@@ -215,29 +253,7 @@ ggplot2::ggplot(domains_df2, aes(x = reorder(name, n), y = n)) +
   theme_bw(base_size = 14) + 
   theme(axis.text.x = element_text(angle = 90)) +
   coord_flip() +
-  facet_wrap(~`m6A status`, scales = "free")
-
-
-ggplot2::ggplot(domains_df2_o, aes(x = reorder(name, freq), y = freq)) + 
-  geom_bar(stat = 'identity', fill = "steelblue", alpha = 0.7) + 
-  labs(x = 'Domain', y = "Proportion of domains overlapped with DF2 peaks",
-       title = "Domains overlapped by DF2 only peaks") +
-  theme_minimal() +
-  theme_bw(base_size = 14) + 
-  theme(axis.text.x = element_text(angle = 90)) +
-  coord_flip()
-
-ggplot2::ggplot(domains_df2_m, aes(x = reorder(name, freq), y = freq)) + 
-  geom_bar(stat = 'identity', fill = "steelblue", alpha = 0.7) + 
-  labs(x = 'Domain', y = "Proportion of domains overlapped with DF2 peaks",
-       title = "Domains overlapped by DF2-m6A peaks") +
-  theme_minimal() +
-  theme_bw(base_size = 14) + 
-  theme(axis.text.x = element_text(angle = 90)) +
-  coord_flip()
-
-
-
+  facet_wrap(~`m6A status`, scales = "free_y")
 ```
 
 
@@ -246,8 +262,11 @@ ggplot2::ggplot(domains_df2_m, aes(x = reorder(name, freq), y = freq)) +
 
 #Motifs
 ```{r, eval = FALSE}
-df2_df %>%
-  filter(peakID %in% df2_m6A$peakID) %>%
+set.seed(5)
+
+
+df2_m6A %>%
+  filter(score > 0.2) %>%
   dplyr::select(seqnames, start, end, name, width, strand) %>%
   write_tsv("df2_m6A.bed", col_names = FALSE)
 
@@ -260,8 +279,8 @@ motifResults <- runMotifDiscovery(queryRegions = tb,
 
 ggseqlogo::ggseqlogo(motifResults$matches_query)
 
-df2_df %>%
-  filter(!(peakID %in% df2_m6A$peakID)) %>%
+df2_non %>%
+  filter(score > 0.2) %>%
   dplyr::select(seqnames, start, end, name, width, strand) %>%
   write_tsv("df2_no_m6A.bed", col_names = FALSE)
 
@@ -277,10 +296,24 @@ ggseqlogo::ggseqlogo(motifResults_n$matches_query)
 
 #Metagene
 ```{r}
+
+df2_m6A %>%
+  dplyr::select(seqnames, start, end, name, width, strand) %>%
+  write_tsv("df2_m6A_unfilt.bed", col_names = FALSE)
+
+tb_un <- importBed('df2_m6A_unfilt.bed')
+
+
+df2_non %>%
+  dplyr::select(seqnames, start, end, name, width, strand) %>%
+  write_tsv("df2_no_m6A_unfilt.bed", col_names = FALSE)
+
+tb_un_n <- importBed('df2_no_m6A_unfilt.bed')
+
 gff <- importGtf(filePath = "~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf")
 txdbFeatures <- getTxdbFeaturesFromGRanges(gff)
 
-cvgList <- calculateCoverageProfileList(queryRegions = tb, 
+cvgList <- calculateCoverageProfileList(queryRegions = tb_un, 
                                         targetRegionsList = txdbFeatures, 
                                         sampleN = 10000)
 
@@ -301,7 +334,7 @@ ggplot2::ggplot(cvgList_tx, aes(x = bins, y = meanCoverage)) +
   geom_line(color = 'black', size = 0.5) + theme_bw(base_size = 14)
 
 
-cvgList_n <- calculateCoverageProfileList(queryRegions = tb_n, 
+cvgList_n <- calculateCoverageProfileList(queryRegions = tb_un_n, 
                                         targetRegionsList = txdbFeatures, 
                                         sampleN = 10000)
 
@@ -329,46 +362,70 @@ ggplot2::ggplot(cvgList_all, aes(x = bins, y = meanCoverage)) +
 
 #Gene regions
 ```{r}
-summary <- summarizeQueryRegions(queryRegions = tb, 
+summary <- summarizeQueryRegions(queryRegions = tb_un, 
                                  txdbFeatures = txdbFeatures)
 
 df <- data.frame(summary)
-df$percent <- round((df$count / length(tb)), 3) * 100
 df$feature <- rownames(df)
-df <- df %>% filter(feature %in% c("exons", "introns", "threeUTRs",
-                                   "fiveUTRs", "cds"))
-ggplot2::ggplot(df, aes(x = reorder(feature, -percent), y = percent)) + 
+df_gene <- df %>%
+  filter(feature %in% c("fiveUTRs", "cds", "threeUTRs")) %>%
+  mutate(percent = round((count / length(tb_un)), 3) * 100)
+
+df_exonintron <- df %>%
+  filter(feature %in% c("exons", "introns")) %>%
+  mutate(percent = round((count / length(tb_un)), 3) * 100)
+
+ggplot2::ggplot(df_gene, aes(x = reorder(feature, -percent), y = percent)) + 
   geom_bar(stat = 'identity', aes(fill = feature)) + 
   scale_fill_brewer(palette = "Accent") +
-  geom_label(aes(y = percent + 3), label = df$count) + 
-  labs(x = 'transcript feature', y = paste0('percent overlap (n = ', length(tb), ')')) +
+  geom_label(aes(y = percent + 3), label = df_gene$count) + 
+  labs(x = 'transcript feature', y = paste0('percent overlap (n = ', length(tb_un), ')')) +
   theme_bw(base_size = 14) + 
   theme(axis.text.x = element_text(angle = 90))
 
-summary_n <- summarizeQueryRegions(queryRegions = tb_n, 
+summary_n <- summarizeQueryRegions(queryRegions = tb_un_n, 
                                  txdbFeatures = txdbFeatures)
 
 df_n <- data.frame(summary_n)
-df_n$percent <- round((df_n$count / length(tb_n)), 3) * 100
 df_n$feature <- rownames(df_n)
-df_n <- df_n %>% filter(feature %in% c("exons", "introns", "threeUTRs",
-                                   "fiveUTRs", "cds"))
-ggplot2::ggplot(df_n, aes(x = reorder(feature, -percent), y = percent)) + 
+df_n_gene <- df_n %>%
+  filter(feature %in% c("fiveUTRs", "cds", "threeUTRs")) %>%
+  mutate(percent = round((count / length(tb_un_n)), 3) * 100)
+
+df_n_exonintron <- df_n %>%
+  filter(feature %in% c("exons", "introns")) %>%
+  mutate(percent = round((count / length(tb_un_n)), 3) * 100)
+
+ggplot2::ggplot(df_n_gene, aes(x = reorder(feature, -percent), y = percent)) + 
   geom_bar(stat = 'identity', aes(fill = feature)) + 
   scale_fill_brewer(palette = "Accent") +
-  geom_label(aes(y = percent + 3), label = df_n$count) + 
-  labs(x = 'transcript feature', y = paste0('percent overlap (n = ', length(tb_n), ')')) +
+  geom_label(aes(y = percent + 3), label = df_n_gene$count) + 
+  labs(x = 'transcript feature', y = paste0('percent overlap (n = ', length(tb_un_n), ')')) +
   theme_bw(base_size = 14) + 
   theme(axis.text.x = element_text(angle = 90))
 
 
-df_all <- bind_rows(list("m6A-modified" = df, "Unmodified" = df_n), .id = "m6A")
+df_all_genes <- bind_rows(list("m6A-modified" = df_gene, "Unmodified" = df_n_gene), .id = "m6A") %>%
+  mutate(feature = factor(feature, levels = c("fiveUTRs", "cds", "threeUTRs")))
 
-ggplot2::ggplot(df_all, aes(x = factor(feature, levels = c("exons", "introns",
-                                                           "fiveUTRs", "cds", "threeUTRs")), y = percent)) + 
+ggplot2::ggplot(df_all_genes, aes(x = feature, y = percent)) + 
   geom_bar(stat = 'identity', aes(fill = feature)) + 
   scale_fill_brewer(palette = "Accent") +
-  geom_label(aes(y = percent + 3), label = df_all$count) + 
+  geom_label(aes(y = percent + 3), label = df_all_genes$count) + 
+  labs(x = 'transcript feature', y = "percent overlap") +
+  theme_bw(base_size = 14) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none") +
+  facet_wrap( ~ m6A)
+
+
+df_all_exonintron <- bind_rows(list("m6A-modified" = df_exonintron, "Unmodified" = df_n_exonintron), .id = "m6A") %>%
+  mutate(feature = factor(feature, levels = c("exons", "introns")))
+
+ggplot2::ggplot(df_all_exonintron, aes(x = feature, y = percent)) + 
+  geom_bar(stat = 'identity', aes(fill = feature)) + 
+  scale_fill_brewer(palette = "Accent") +
+  geom_label(aes(y = percent + 3), label = df_all_exonintron$count) + 
   labs(x = 'transcript feature', y = "percent overlap") +
   theme_bw(base_size = 14) + 
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
@@ -434,8 +491,20 @@ ggplot2::ggplot(dfv_all, aes(x = reorder(feature, -percent), y = percent)) +
 ribo <- read_xlsx("~/files/PARCLIP_IDR/data/GSE49339_C-Ribosome_profiling.xlsx", sheet = 3, skip = 3, 
                   col_names = c("Gene", "Ribosome-bound fragments", "Poly(A)+ mRNA input", "Translation Efficiency"))
 
+
+all_peaks_filt <- df2_annotated %>%
+  filter(score > 0.20) %>%
+  group_by(name, m6A_status) %>%
+  tally() %>%
+  group_by(name) %>%
+  mutate(total_peaks = sum(n)) %>%
+  spread(key = m6A_status, value = n, fill = 0) %>%
+  mutate(df2_only_frac = `non-m6A` / total_peaks)
+
+
+
 ribo_groups <- ribo %>%
-  left_join(all_peaks, by = c("Gene" = "name")) %>%
+  left_join(all_peaks_filt, by = c("Gene" = "name")) %>%
   mutate(category = case_when(
     df2_only_frac <= 0.5 ~ "Most peaks are m6A-modified",
     df2_only_frac > 0.5 ~ "Most peaks are unmodified",
@@ -460,7 +529,7 @@ wilcox.test(`Translation Efficiency` ~ category, data = ribo_compare)
 ggplot(ribo_groups, aes(x = `Translation Efficiency`)) +
   stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
   scale_x_continuous(limits = c(-1.5, 1.5)) +
-  annotate("text", x = -0.5, y = 0.92, label = "p = 2.272 * 10^-9") +
+  annotate("text", x = -0.5, y = 0.92, label = "p = 2.176 * 10^-6") +
   annotate("text", x = -0.5, y = 0.85, label = "(Mostly m6A-modified vs.") +
   annotate("text", x = -0.5, y = 0.8, label = "Mostly Unmodified)") +
   ylab("Cumulative fraction") +
@@ -469,6 +538,7 @@ ggplot(ribo_groups, aes(x = `Translation Efficiency`)) +
   ggtitle("Translation efficiency of YTHDF2 targets by m6A-modification state") +
   theme_minimal() +
   theme(legend.position="bottom")
+
   
 ```
 
@@ -478,7 +548,7 @@ hl_rep1 <- read_xlsx("~/files/PARCLIP_IDR/data/GSE49339_E-mRNA_Lifetime-rep2.xls
   dplyr::select(Gene, `log2(siYTHDF2/siControl)`)
 
 hl_groups <- hl_rep1 %>%
-  left_join(all_peaks, by = c("Gene" = "name")) %>%
+  left_join(all_peaks_filt, by = c("Gene" = "name")) %>%
   mutate(category = case_when(
     df2_only_frac <= 0.5 ~ "Most peaks are m6A-modified",
     df2_only_frac > 0.5 ~ "Most peaks are unmodified",
@@ -503,7 +573,7 @@ wilcox.test(`log2(siYTHDF2/siControl)` ~ category, data = hl_compare)
 ggplot(hl_groups, aes(x = `log2(siYTHDF2/siControl)`)) +
   stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
   scale_x_continuous(limits = c(-1.5, 1.5)) +
-  annotate("text", x = -0.5, y = 0.92, label = "p = 1.111 * 10^-8") +
+  annotate("text", x = -0.5, y = 0.92, label = "p = 4.534 * 10^-7") +
   annotate("text", x = -0.5, y = 0.85, label = "(Mostly m6A-modified vs.") +
   annotate("text", x = -0.5, y = 0.8, label = "Mostly Unmodified)") +
   ylab("Cumulative fraction") +
@@ -514,6 +584,70 @@ ggplot(hl_groups, aes(x = `log2(siYTHDF2/siControl)`)) +
   theme(legend.position="bottom")
 ```
 
+#Pulling out individual gene changes after DF2 KD
+```{r}
+ribo_r1 <- read_xlsx("~/files/PARCLIP_IDR/data/GSE49339_C-Ribosome_profiling.xlsx", sheet = 1, skip = 2, 
+                  col_names = c("Gene", "siCtr", "siDF2", NA, NA, NA, NA))
+
+ribo_r2 <- read_xlsx("~/files/PARCLIP_IDR/data/GSE49339_C-Ribosome_profiling.xlsx", sheet = 2, skip = 2, 
+                  col_names = c("Gene", "siCtr", "siDF2", NA, NA, NA, NA, NA, NA, NA))
+
+ribo_both <- inner_join(ribo_r1, ribo_r2, by = "Gene") %>%
+  group_by(Gene) %>%
+  mutate(siDF2_mean = mean(siDF2.x, siDF2.y, na.rm = TRUE),
+         siCtr_mean = mean(siCtr.x, siCtr.y, na.rm = TRUE)) %>%
+  select(Gene, siDF2_mean, siCtr_mean) %>%
+  mutate(dif = log2(siDF2_mean / siCtr_mean)) %>%
+  gather(Condition, `Ribosome protected fragments`, -Gene, -dif)
+
+ggplot(ribo_both, aes(x = Condition, y = log2(`Ribosome protected fragments`), group = Gene)) +
+  geom_line(alpha = 0.3)
+
+
+
+ribo_groups_bygene <- ribo_both %>%
+  left_join(all_peaks_filt, by = c("Gene" = "name")) %>%
+  mutate(category = case_when(
+    df2_only_frac <= 0.5 ~ "Most peaks are m6A-modified",
+    df2_only_frac > 0.5 ~ "Most peaks are unmodified",
+    is.na(df2_only_frac) ~ "Non-target"
+  )) %>%
+  mutate(col = case_when(
+    dif > 1 ~ "Increased translation",
+    dif < -1 ~ "Decreased translation",
+    TRUE ~ "Lame"
+  ))
+
+ggplot(ribo_groups_bygene,
+       aes(x = Condition, y = log2(`Ribosome protected fragments`),
+           group = Gene)) +
+  geom_line(data = ribo_groups_bygene %>% filter(col == "Lame"),
+            aes(x = Condition, y = log2(`Ribosome protected fragments`),
+                group = Gene),
+            alpha = 0.05, color = "grey") +
+  geom_line(data = ribo_groups_bygene %>% filter(col == "Increased translation"),
+            aes(x = Condition, y = log2(`Ribosome protected fragments`),
+                group = Gene),
+            alpha = 0.2, color = "red") +
+  geom_line(data = ribo_groups_bygene %>% filter(col == "Decreased translation"),
+            aes(x = Condition, y = log2(`Ribosome protected fragments`),
+                group = Gene),
+            alpha = 0.2, color = "blue") +
+  facet_wrap(~category, ncol = 2) +
+  theme_minimal()
+
+
+ggplot(ribo_groups_bygene %>% filter(col != "Decreased translation" & category != "Non-target"),
+       aes(x = Condition, y = log2(`Ribosome protected fragments`),
+           group = Gene)) +
+  geom_line(alpha = 0.05, color = "grey") +
+  geom_line(data = ribo_groups_bygene %>% filter(dif < -2 & category != "Non-target"),
+            aes(color = 1),
+            alpha = 0.3) +
+  facet_wrap(~category, ncol = 2) +
+  theme_minimal()
+
+```
 
 
 

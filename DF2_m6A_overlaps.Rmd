@@ -127,6 +127,19 @@ r3_idr_m6A %>%
     geom_rug(alpha = 0.4) +
     labs(title = "Distribution of T2C Fraction restricted to >= 0.25, based on m6A") +
   scale_color_manual(values = pal)
+
+r3_idr_m6A %>%
+  filter(T2Cfraction >= 0.2) %>%
+  ggplot(aes(y = T2Cfraction, x = m6A)) +
+    geom_violin(fill = "steelblue", alpha = 0.7) +
+    geom_boxplot(width = 0.03, alpha = 0.8, outlier.shape = NA) +
+    labs(title = "Distribution of T2C Fraction in YTHDF peaks, based on m6A status") +
+    theme_minimal() +
+    theme(panel.grid.minor = element_blank()) +
+    xlab("Modification state of YTHDF peaks") +
+    annotate("text", x = 1.5, y = 0.9, label = "p < 1.3 * 10^-6")
+
+wilcox.test(T2Cfraction ~ m6A, data = r3_idr_m6A %>% filter(T2Cfraction >= 0.2))
 ```
 
 ```{r}
