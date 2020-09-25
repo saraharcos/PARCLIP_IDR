@@ -222,7 +222,7 @@ uniprot <- read_tsv("~/files/uniprot_domains_hg19.dms") %>%
 uniprot_g <- GRanges(seqnames = uniprot$`#chrom`, IRanges(start = uniprot$chromStart, end = uniprot$chromEnd), name = uniprot$name) %>%
   keepStandardChromosomes(pruning.mode="coarse")
 
-df2_scored <- df2[df2$score > 0.1]
+df2_scored <- df2[df2$score > 0.2]
 
 df2_o <- df2_scored[!df2_scored %over% m6A,]
 
@@ -235,7 +235,7 @@ domains_df2_o <- uniprot_g[uniprot_g %over% df2_o,] %>%
   group_by(name) %>%
   tally() %>%
   mutate(freq = n / sum(n)) %>%
-  top_n(10, freq)
+  top_n(5, freq)
 
 domains_df2_m <- uniprot_g[uniprot_g %over% df2_m,] %>%
   as_tibble() %>%
@@ -243,7 +243,7 @@ domains_df2_m <- uniprot_g[uniprot_g %over% df2_m,] %>%
   group_by(name) %>%
   tally() %>%
   mutate(freq = n / sum(n)) %>%
-  top_n(10, freq)
+  top_n(5, freq)
 
 domains_df2 <- bind_rows("non-m6A" = domains_df2_o, "m6A-modified" = domains_df2_m, .id = "m6A status")
 
@@ -254,6 +254,31 @@ ggplot2::ggplot(domains_df2, aes(x = reorder(name, n), y = n)) +
   theme(axis.text.x = element_text(angle = 90)) +
   coord_flip() +
   facet_wrap(~`m6A status`, scales = "free_y")
+
+
+gFeatures <- list(
+  "zincfinger" = uniprot_g[uniprot_g$name == "zinc finger"],
+  "proteinkinase" = uniprot_g[uniprot_g$name == "Protein kinase"])
+
+cvB_non5 <- getFeatureBoundaryCoverage(
+  queryRegions = tb,
+  featureCoords = gFeatures$zincfinger,
+  boundaryType = 'fiveprime'
+)
+
+cvB_non3 <- getFeatureBoundaryCoverage(
+  queryRegions = tb,
+  featureCoords = gFeatures$zincfinger,
+  boundaryType = 'threeprime'
+)
+
+ggplot2::ggplot(cvB_non5, aes(x = bases, y = meanCoverage)) + 
+  geom_ribbon(fill = 'lightblue', 
+              aes(ymin = meanCoverage - standardError * 1.96, 
+                  ymax = meanCoverage + standardError * 1.96)) + 
+ geom_line(color = 'black')
+
+
 ```
 
 
@@ -297,25 +322,14 @@ ggseqlogo::ggseqlogo(motifResults_n$matches_query)
 #Metagene
 ```{r}
 
-df2_m6A %>%
-  dplyr::select(seqnames, start, end, name, width, strand) %>%
-  write_tsv("df2_m6A_unfilt.bed", col_names = FALSE)
 
-tb_un <- importBed('df2_m6A_unfilt.bed')
-
-
-df2_non %>%
-  dplyr::select(seqnames, start, end, name, width, strand) %>%
-  write_tsv("df2_no_m6A_unfilt.bed", col_names = FALSE)
-
-tb_un_n <- importBed('df2_no_m6A_unfilt.bed')
 
 gff <- importGtf(filePath = "~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf")
 txdbFeatures <- getTxdbFeaturesFromGRanges(gff)
 
-cvgList <- calculateCoverageProfileList(queryRegions = tb_un, 
+cvgList <- calculateCoverageProfileList(queryRegions = tb, 
                                         targetRegionsList = txdbFeatures, 
-                                        sampleN = 10000)
+                                        sampleN = 0)
 
 # ggplot2::ggplot(cvgList, aes(x = bins, y = meanCoverage)) + 
 #   geom_ribbon(fill = 'lightgreen', 
@@ -334,9 +348,9 @@ ggplot2::ggplot(cvgList_tx, aes(x = bins, y = meanCoverage)) +
   geom_line(color = 'black', size = 0.5) + theme_bw(base_size = 14)
 
 
-cvgList_n <- calculateCoverageProfileList(queryRegions = tb_un_n, 
+cvgList_n <- calculateCoverageProfileList(queryRegions = tb_n, 
                                         targetRegionsList = txdbFeatures, 
-                                        sampleN = 10000)
+                                        sampleN = 0)
 
 
 cvgList_tx_n <- cvgList_n %>%
@@ -360,47 +374,109 @@ ggplot2::ggplot(cvgList_all, aes(x = bins, y = meanCoverage)) +
 ```
 
 
+#Feature from ucsc gtf
+```{r}
+
+uniprot_s <- read_tsv("~/files/uniprot_structure_hg19.dms") %>%
+  filter(!str_detect(dbName, "Unreviewed"))
+
+structs <- GRanges(seqnames = uniprot_s$`#chrom`, IRanges(start = uniprot_s$chromStart, end = uniprot_s$chromEnd), type = uniprot_s$name) %>%
+  keepStandardChromosomes(pruning.mode="coarse")
+
+sFeatures <- list(
+  "gff_beta" = structs[structs$type == "beta"],
+  "gff_turn" = structs[structs$type == "turn"],
+  "gff_helix" = structs[structs$type == "helix"],
+  "gff_coil" = structs[structs$type == "coiled-coil"] )
+
+cv_non <- calculateCoverageProfileList(
+  queryRegions = tb_n,
+  targetRegions = sFeatures
+)
+
+ggplot2::ggplot(cv_non, aes(x = bins, y = meanCoverage)) + 
+  geom_ribbon(fill = 'steelblue', alpha = 0.4,
+              aes(ymin = meanCoverage - standardError * 1.96, 
+                  ymax = meanCoverage + standardError * 1.96)) + 
+  geom_line(color = 'black', size = 0.5) + theme_bw(base_size = 14) +
+  facet_wrap(~feature)
+
+cv_m6A <- calculateCoverageProfileList(
+  queryRegions = tb,
+  targetRegions = sFeatures
+)
+
+ggplot2::ggplot(cv_m6A, aes(x = bins, y = meanCoverage)) + 
+  geom_ribbon(fill = 'steelblue', alpha = 0.4,
+              aes(ymin = meanCoverage - standardError * 1.96, 
+                  ymax = meanCoverage + standardError * 1.96)) + 
+  geom_line(color = 'black', size = 0.5) + theme_bw(base_size = 14) +
+  facet_wrap(~feature)
+
+
+cvB_non5 <- getFeatureBoundaryCoverage(
+  queryRegions = tb_n,
+  featureCoords = sFeatures$gff_helix,
+  boundaryType = 'fiveprime'
+)
+
+cvB_non3 <- getFeatureBoundaryCoverage(
+  queryRegions = tb_n,
+  featureCoords = sFeatures$gff_helix,
+  boundaryType = 'threeprime'
+)
+
+ggplot2::ggplot(cvB_non5, aes(x = bases, y = meanCoverage)) + 
+  geom_ribbon(fill = 'lightblue', 
+              aes(ymin = meanCoverage - standardError * 1.96, 
+                  ymax = meanCoverage + standardError * 1.96)) + 
+ geom_line(color = 'black')
+
+
+```
+
+
 #Gene regions
 ```{r}
-summary <- summarizeQueryRegions(queryRegions = tb_un, 
+summary <- summarizeQueryRegions(queryRegions = tb, 
                                  txdbFeatures = txdbFeatures)
 
 df <- data.frame(summary)
 df$feature <- rownames(df)
 df_gene <- df %>%
   filter(feature %in% c("fiveUTRs", "cds", "threeUTRs")) %>%
-  mutate(percent = round((count / length(tb_un)), 3) * 100)
+  mutate(percent = round((count / sum(count)), 3) * 100)
 
 df_exonintron <- df %>%
   filter(feature %in% c("exons", "introns")) %>%
-  mutate(percent = round((count / length(tb_un)), 3) * 100)
+  mutate(percent = round((count / sum(count)), 3) * 100)
 
 ggplot2::ggplot(df_gene, aes(x = reorder(feature, -percent), y = percent)) + 
   geom_bar(stat = 'identity', aes(fill = feature)) + 
   scale_fill_brewer(palette = "Accent") +
   geom_label(aes(y = percent + 3), label = df_gene$count) + 
-  labs(x = 'transcript feature', y = paste0('percent overlap (n = ', length(tb_un), ')')) +
+  labs(x = 'transcript feature', y = paste0('percent overlap (n = ', length(tb), ')')) +
   theme_bw(base_size = 14) + 
   theme(axis.text.x = element_text(angle = 90))
 
-summary_n <- summarizeQueryRegions(queryRegions = tb_un_n, 
+summary_n <- summarizeQueryRegions(queryRegions = tb_n, 
                                  txdbFeatures = txdbFeatures)
 
 df_n <- data.frame(summary_n)
 df_n$feature <- rownames(df_n)
 df_n_gene <- df_n %>%
   filter(feature %in% c("fiveUTRs", "cds", "threeUTRs")) %>%
-  mutate(percent = round((count / length(tb_un_n)), 3) * 100)
+  mutate(percent = round((count / sum(count)), 3) * 100)
 
 df_n_exonintron <- df_n %>%
   filter(feature %in% c("exons", "introns")) %>%
-  mutate(percent = round((count / length(tb_un_n)), 3) * 100)
+  mutate(percent = round((count / sum(count)), 3) * 100)
 
 ggplot2::ggplot(df_n_gene, aes(x = reorder(feature, -percent), y = percent)) + 
   geom_bar(stat = 'identity', aes(fill = feature)) + 
   scale_fill_brewer(palette = "Accent") +
   geom_label(aes(y = percent + 3), label = df_n_gene$count) + 
-  labs(x = 'transcript feature', y = paste0('percent overlap (n = ', length(tb_un_n), ')')) +
+  labs(x = 'transcript feature', y = paste0('percent overlap (n = ', length(tb_n), ')')) +
   theme_bw(base_size = 14) + 
   theme(axis.text.x = element_text(angle = 90))
 
@@ -408,29 +484,25 @@ ggplot2::ggplot(df_n_gene, aes(x = reorder(feature, -percent), y = percent)) +
 df_all_genes <- bind_rows(list("m6A-modified" = df_gene, "Unmodified" = df_n_gene), .id = "m6A") %>%
   mutate(feature = factor(feature, levels = c("fiveUTRs", "cds", "threeUTRs")))
 
-ggplot2::ggplot(df_all_genes, aes(x = feature, y = percent)) + 
-  geom_bar(stat = 'identity', aes(fill = feature)) + 
+ggplot2::ggplot(df_all_genes, aes(x = m6A, y = percent, group = feature, fill = feature)) + 
+  geom_bar(stat = 'identity', position = "stack") + 
   scale_fill_brewer(palette = "Accent") +
   geom_label(aes(y = percent + 3), label = df_all_genes$count) + 
   labs(x = 'transcript feature', y = "percent overlap") +
   theme_bw(base_size = 14) + 
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        legend.position = "none") +
-  facet_wrap( ~ m6A)
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 
 df_all_exonintron <- bind_rows(list("m6A-modified" = df_exonintron, "Unmodified" = df_n_exonintron), .id = "m6A") %>%
   mutate(feature = factor(feature, levels = c("exons", "introns")))
 
-ggplot2::ggplot(df_all_exonintron, aes(x = feature, y = percent)) + 
-  geom_bar(stat = 'identity', aes(fill = feature)) + 
+ggplot2::ggplot(df_all_exonintron, aes(x = m6A, y = percent, group = feature, fill = feature)) + 
+  geom_bar(stat = 'identity', position = "stack") + 
   scale_fill_brewer(palette = "Accent") +
   geom_label(aes(y = percent + 3), label = df_all_exonintron$count) + 
   labs(x = 'transcript feature', y = "percent overlap") +
   theme_bw(base_size = 14) + 
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        legend.position = "none") +
-  facet_wrap( ~ m6A)
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
 
@@ -539,7 +611,15 @@ ggplot(ribo_groups, aes(x = `Translation Efficiency`)) +
   theme_minimal() +
   theme(legend.position="bottom")
 
-  
+ribo_groups %>% 
+  filter(category != "Non-target") %>%
+  mutate(sig = case_when(
+    `Translation Efficiency` < -2 ~ "Changed",
+    TRUE ~ "un-changed"
+  )) %>%
+  ggplot(aes(x = category, y = `Translation Efficiency`, color = sig)) +
+    geom_point(position = "jitter", alpha = 0.3) +
+    geom_violin(color = "grey", fill = "grey", alpha = 0.5)
 ```
 
 #Half life for publication
@@ -582,7 +662,63 @@ ggplot(hl_groups, aes(x = `log2(siYTHDF2/siControl)`)) +
   ggtitle("Half-life of YTHDF2 targets by m6A-modification state") +
   theme_minimal() +
   theme(legend.position="bottom")
+
+
+hl_groups %>% 
+  filter(category != "Non-target") %>%
+  mutate(sig = case_when(
+    `log2(siYTHDF2/siControl)` > 1 ~ "Changed",
+    TRUE ~ "un-changed"
+  )) %>%
+  ggplot(aes(x = category, y = `log2(siYTHDF2/siControl)`, color = sig)) +
+    geom_point(position = "jitter", alpha = 0.3) +
+    geom_violin(color = "grey", fill = "grey", alpha = 0.5)
 ```
+
+#Gene regions by ribo or stability
+```{r}
+
+ribo_changed <- ribo_groups %>%
+  filter(`Translation Efficiency` < -0.5)
+
+df2_non %>%
+  filter(name %in% ribo_changed$Gene) %>%
+  dplyr::select(seqnames, start, end, name, width, strand) %>%
+  write_tsv("df2_m6A_ribo.bed", col_names = FALSE)
+
+tb_rib <-  importBed('df2_m6A_ribo.bed')
+
+summary <- summarizeQueryRegions(queryRegions = tb_rib, 
+                                 txdbFeatures = txdbFeatures)
+
+df <- data.frame(summary)
+df$feature <- rownames(df)
+df_gene <- df %>%
+  filter(feature %in% c("fiveUTRs", "cds", "threeUTRs")) %>%
+  mutate(percent = round((count / sum(count)), 3) * 100)
+
+df_exonintron <- df %>%
+  filter(feature %in% c("exons", "introns")) %>%
+  mutate(percent = round((count / sum(count)), 3) * 100)
+
+ggplot2::ggplot(df_gene, aes(x = 1, y = percent, group = feature, fill = feature)) + 
+  geom_bar(stat = 'identity', position = "stack") + 
+  scale_fill_brewer(palette = "Accent") +
+  geom_label(aes(y = percent + 3), label = df_gene$count) + 
+  labs(x = 'transcript feature', y = paste0('percent overlap (n = ', length(tb_rib), ')')) +
+  theme_bw(base_size = 14) + 
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot2::ggplot(df_exonintron, aes(x = 1, y = percent, group = feature, fill = feature)) + 
+  geom_bar(stat = 'identity', position = "stack") + 
+  scale_fill_brewer(palette = "Accent") +
+  geom_label(aes(y = percent + 3), label = df_exonintron$count) + 
+  labs(x = 'transcript feature', y = paste0('percent overlap (n = ', length(tb_rib), ')')) +
+  theme_bw(base_size = 14) + 
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+
 
 #Pulling out individual gene changes after DF2 KD
 ```{r}
@@ -651,340 +787,6 @@ ggplot(ribo_groups_bygene %>% filter(col != "Decreased translation" & category !
 
 
 
-# Ribosome profiling test
- - Genes with no m6A peaks or DF2 peaks
- - Genes with DF2 peaks but no m6A peaks
- - Genes with both peaks and overlap
- - Genes with both peaks and no overlap
-```{r, eval = FALSE}
-ribo <- read_xlsx("~/files/PARCLIP_IDR/data/GSE49339_C-Ribosome_profiling.xlsx", sheet = 3, skip = 3, 
-                  col_names = c("Gene", "Ribosome-bound fragments", "Poly(A)+ mRNA input", "Translation Efficiency"))
-
-ggplot(ribo, aes(x  = `Translation Efficiency`)) +
-  stat_ecdf()
-
-ribo %>%
-  left_join(all_peaks, by = c("Gene" = "name")) %>%
-  mutate(df2_only_cat = case_when(
-    df2_only < 6 ~ as.character(df2_only),
-    TRUE ~ "> 5"
-  )) %>%
-  ggplot(aes(x = `Translation Efficiency`)) +
-  stat_ecdf(aes(color = as.factor(df2_only_cat), group = as.factor(df2_only_cat)))
-
-ribo %>%
-  left_join(all_peaks, by = c("Gene" = "name")) %>%
-  mutate(m6A_ov_cat = case_when(
-    m6A_overlapped < 6 ~ as.character(m6A_overlapped),
-    TRUE ~ "> 5"
-  )) %>%
-  ggplot(aes(x = `Translation Efficiency`)) +
-  stat_ecdf(aes(color = as.factor(m6A_ov_cat), group = as.factor(m6A_ov_cat))) 
-
-ribo %>%
-  left_join(all_peaks, by = c("Gene" = "name")) %>%
-  mutate(df2_total_cat = case_when(
-    total_peaks < 6 ~ as.character(total_peaks),
-    TRUE ~ "> 5"
-  )) %>%
-  ggplot(aes(x = `Translation Efficiency`)) +
-  stat_ecdf(aes(color = as.factor(df2_total_cat), group = as.factor(df2_total_cat)),
-            alpha = 0.6, size = 1) 
-
-ribo %>%
-  left_join(all_peaks, by = c("Gene" = "name")) %>%
-  filter(!is.na(total_peaks)) %>%
-  ggplot(aes(y = `Translation Efficiency`, x = as.factor(df2_only))) +
-  geom_boxplot()
-
-ribo %>%
-  left_join(all_peaks, by = c("Gene" = "name")) %>%
-  filter(!is.na(total_peaks)) %>%
-  ggplot(aes(y = `Translation Efficiency`, x = as.factor(m6A_overlapped))) +
-  geom_boxplot()
-
-ribo %>%
-  left_join(all_peaks, by = c("Gene" = "name")) %>%
-  filter(!is.na(total_peaks)) %>%
-  ggplot(aes(y = `Translation Efficiency`, x = as.factor(total_peaks))) +
-  geom_boxplot()
-
-ribo %>%
-  left_join(all_peaks, by = c("Gene" = "name")) %>%
-  ggplot(aes(y = `Translation Efficiency`, x = df2_only_frac)) +
-  geom_point(color = "steelblue", alpha = 0.5)
-
-```
-
-#Halflife data
-```{r, warnings = FALSE}
-hl_rep1 <- read_xlsx("~/files/PARCLIP_IDR/data/GSE49339_E-mRNA_Lifetime-rep2.xlsx", sheet = 4, skip = 1) %>%
-  dplyr::select(Gene, `log2(siYTHDF2/siControl)`)
-
-ribo <- read_xlsx("~/files/PARCLIP_IDR/data/GSE49339_C-Ribosome_profiling.xlsx", sheet = 3, skip = 3, 
-                  col_names = c("Gene", "Ribosome-bound fragments", "Poly(A)+ mRNA input", "Translation Efficiency"))
-
-hl_rep1 %>%
-  left_join(all_peaks, by = c("Gene" = "name")) %>%
-  mutate(category = case_when(
-    df2_only_frac == 0 ~ "All Shared",
-    df2_only_frac < 1 & df2_only_frac > 0 ~ "Some Shared",
-    df2_only_frac == 1 ~ "DF2 Only",
-    is.na(df2_only_frac) ~ "Non-target"
-  )) %>%
-  ggplot(aes(x = `log2(siYTHDF2/siControl)`)) +
-  stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
-  scale_x_continuous(limits = c(-1.5, 1.5))
-
-ribo %>%
-  left_join(all_peaks, by = c("Gene" = "name")) %>%
-  mutate(category = case_when(
-    df2_only_frac == 0 ~ "All Shared",
-    df2_only_frac < 1 & df2_only_frac > 0 ~ "Some Shared",
-    df2_only_frac == 1 ~ "DF2 Only",
-    is.na(df2_only_frac) ~ "Non-target"
-  )) %>%
-  ggplot(aes(x = `Translation Efficiency`)) +
-  stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
-  scale_x_continuous(limits = c(-1.5, 1.5))
-
-
-ribo %>%
-  left_join(all_peaks, by = c("Gene" = "name")) %>%
-  mutate(category = case_when(
-    df2_only_frac < 0.25 ~ " < 25% Free",
-    df2_only_frac >= 0.25 & df2_only_frac <= 0.5 ~ "25%-50% Free",
-    df2_only_frac > 0.5 & df2_only_frac < 0.75 ~ "50%-75% Free",
-    df2_only_frac >= 0.75 & df2_only_frac < 1~ " > 75% Free",
-    df2_only_frac == 1 ~ "All Free",
-    is.na(df2_only_frac) ~ "Non-target"
-  )) %>%
-  ggplot(aes(x = `Translation Efficiency`)) +
-  stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
-  scale_x_continuous(limits = c(-1.5, 1.5))
-# 
-
-ribo %>%
-  left_join(all_peaks, by = c("Gene" = "name")) %>%
-  mutate(category = case_when(
-    df2_only_frac <= 0.5 ~ " < 50% Free",
-    df2_only_frac > 0.5 ~ " > 50% Free",
-    is.na(df2_only_frac) ~ "Non-target"
-  )) %>%
-  ggplot(aes(x = `Translation Efficiency`)) +
-  stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
-  scale_x_continuous(limits = c(-1.5, 1.5))
-
-ribo %>%
-  left_join(all_peaks, by = c("Gene" = "name")) %>%
-  #filter(df2_only_frac < 1) %>%
-  mutate(category = case_when(
-    df2_only_frac == 0  ~ "All shared",
-    df2_only_frac > 0 & df2_only_frac < 0.25 ~ " < 25% Free",
-    df2_only_frac >= 0.25 & df2_only_frac <= 0.5 ~ "25%-50% Free",
-    df2_only_frac > 0.5 & df2_only_frac < 0.75 ~ "50%-75% Free",
-    df2_only_frac >= 0.75  & df2_only_frac < 1 ~ " > 75% Free",
-    df2_only_frac == 1 ~ "All free",
-    is.na(df2_only_frac) ~ "Non-target"
-  )) %>%
-  mutate(category = factor(category, levels = c("All shared",
-                                                " < 25% Free",
-                                                "25%-50% Free",
-                                                "50%-75% Free",
-                                                " > 75% Free",
-                                                "All free",
-                                                "Non-target"))) %>%
-  ggplot(aes(x = category, y = `Translation Efficiency`)) +
-  geom_violin() +
-  geom_boxplot(size = 0.5, width = 0.2)
-
-ribo %>%
-  left_join(all_peaks, by = c("Gene" = "name")) %>%
-  mutate(category = case_when(
-    df2_only_frac == 0 ~ "All Shared",
-    df2_only_frac < 1 & df2_only_frac > 0 ~ "Some Shared",
-    df2_only_frac == 1 ~ "DF2 Only",
-    is.na(df2_only_frac) ~ "Non-target"
-  )) %>%
-  ggplot(aes(x = `Ribosome-bound fragments`)) +
-  stat_ecdf(aes(color = as.factor(category), group = as.factor(category))) +
-  scale_x_continuous(limits = c(-1.5, 1.5))
-
-```
-
-
-
-
-
-
-# runReport test
-```{r, eval = FALSE}
-tb <- importBed('df2_m6A.bed')
-tg <- importGtf('~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf')
-
-test <- queryGff(queryRegions = queryRegions, gff = gff)
-overlaps.dt <- data.table(GenomicRanges::as.data.frame(test)) 
-backgroundGenes <- unique(gff$gene_id)
-targetedGenes <- unique(test$gene_id)
-
-overlaps <- as.data.table(queryGff(queryRegions = tb, gffData = tg))
-df <- overlaps[,length(unique(overlappingQuery)), by = gene_type]
-colnames(df) <- c("feature", "count")
-df$percent <- round(df$count / length(queryRegions) * 100, 1)
-df <- df[order(count, decreasing = TRUE)]
-ggplot2::ggplot(df, aes(x = reorder(feature, -percent), y = percent)) + 
-  geom_bar(stat = 'identity', aes(fill = feature)) + 
-  geom_label(aes(y = percent + 0.5), label = df$count) + 
-  labs(x = 'transcript feature', y = paste0('percent overlap (n = ', length(queryRegions), ')')) + 
-  theme_bw(base_size = 14) + 
-  theme(axis.text.x = element_text(angle = 90))
-
-
-runReport('df2_m6A.bed', '~/files/PARpipe/files/gencode.v19.chr_patch_hapl_scaff.annotation.gtf')
-```
-
-
-#GO analysis
-```{r}
-
-gene_cats <- all_peaks %>%
-  mutate(category = case_when(
-    df2_only_frac <= 0.5 ~ "Most peaks are m6A-modified",
-    df2_only_frac > 0.5 ~ "Most peaks are unmodified",
-    is.na(df2_only_frac) ~ "Non-target"
-  ))
-
-
-df2_only_MF <- enrichGO(gene     = gene_cats %>% filter(category == "Most peaks are unmodified") %>% pull(name),
-                OrgDb         = org.Hs.eg.db,
-                keyType       = 'SYMBOL',
-                ont           = "MF",
-                pAdjustMethod = "BH",
-                pvalueCutoff  = 0.01,
-                qvalueCutoff  = 0.05,
-                readable = FALSE)
-
-
-barplot(df2_only_MF, showCategory = 6) +
-  scale_color_gradient(trans = "log10", high = "blue", low = "red") +
-  labs(title = "GO Molecular Function",
-       subtitle = "Genes with most YTHDF2 peaks unmodified")
-ggsave("~/files/figures/df2_only_mf.pdf")
-
-shared_MF <- enrichGO(gene     = gene_cats %>% filter(category == "Most peaks are m6A-modified") %>% pull(name),
-                OrgDb         = org.Hs.eg.db,
-                keyType       = 'SYMBOL',
-                ont           = "MF",
-                pAdjustMethod = "BH",
-                pvalueCutoff  = 0.01,
-                qvalueCutoff  = 0.05,
-                readable = FALSE)
-
-barplot(shared_MF, showCategory = 6) +
-  scale_color_gradient(trans = "log10", high = "blue", low = "red") +
-  labs(title = "GO Molecular Function",
-       subtitle = "Genes with most YTHDF2 peaks m6A-modified")
-ggsave("~/files/figures/df2_m6a_mf.pdf")
-
-df2_only_CC <- enrichGO(gene     = gene_cats %>% filter(category == "Most peaks are unmodified") %>% pull(name),
-                OrgDb         = org.Hs.eg.db,
-                keyType       = 'SYMBOL',
-                ont           = "CC",
-                pAdjustMethod = "BH",
-                pvalueCutoff  = 0.01,
-                qvalueCutoff  = 0.05,
-                readable = FALSE)
-
-barplot(df2_only_CC, showCategory = 6) +
-  scale_color_gradient(trans = "log10", high = "blue", low = "red") +
-  labs(title = "GO Cellular Component",
-       subtitle = "Genes with most YTHDF2 peaks unmodified")
-ggsave("~/files/figures/df2_only_cc.pdf")
-
-shared_CC <- enrichGO(gene     = gene_cats %>% filter(category == "Most peaks are m6A-modified") %>% pull(name),
-                OrgDb         = org.Hs.eg.db,
-                keyType       = 'SYMBOL',
-                ont           = "CC",
-                pAdjustMethod = "BH",
-                pvalueCutoff  = 0.01,
-                qvalueCutoff  = 0.05,
-                readable = FALSE)
-
-barplot(shared_CC, showCategory = 6) +
-  scale_color_gradient(trans = "log10", high = "blue", low = "red") +
-  labs(title = "GO Cellular Component",
-       subtitle = "Genes with most YTHDF2 peaks m6A-modified")
-ggsave("~/files/figures/df2_m6a_cc.pdf")
-
-df2_only_BP <- enrichGO(gene     = gene_cats %>% filter(category == "Most peaks are unmodified") %>% pull(name),
-                OrgDb         = org.Hs.eg.db,
-                keyType       = 'SYMBOL',
-                ont           = "BP",
-                pAdjustMethod = "BH",
-                pvalueCutoff  = 0.01,
-                qvalueCutoff  = 0.05,
-                readable = FALSE)
-
-barplot(df2_only_BP, showCategory = 6) +
-  scale_color_gradient(trans = "log10", high = "blue", low = "red") +
-  labs(title = "GO Biological Process",
-       subtitle = "Genes with most YTHDF2 peaks unmodified")
-ggsave("~/files/figures/df2_only_bp.pdf")
-
-shared_BP <- enrichGO(gene     = gene_cats %>% filter(category == "Most peaks are m6A-modified") %>% pull(name),
-                OrgDb         = org.Hs.eg.db,
-                keyType       = 'SYMBOL',
-                ont           = "BP",
-                pAdjustMethod = "BH",
-                pvalueCutoff  = 0.01,
-                qvalueCutoff  = 0.05,
-                readable = FALSE)
-
-barplot(shared_BP, showCategory = 6) +
-  scale_color_gradient(trans = "log10", high = "blue", low = "red") +
-  labs(title = "GO Biological Process",
-       subtitle = "Genes with most YTHDF2 peaks m6A-modified")
-ggsave("~/files/figures/df2_m6a_bp.pdf")
-  
-  
-# gene_list <- list(
-#   shared = gene_cats %>% filter(category %in% c("All Shared", "Some Shared")) %>% pull(name),
-#   df2_only = gene_cats %>% filter(category == "DF2 Only") %>% pull(name)
-# )
-# 
-# cat_MF <- compareCluster(gene_list, fun = "enrichGO",
-#                            OrgDb = org.Hs.eg.db,
-#                            keyType       = 'SYMBOL',
-#                            ont           = "MF",
-#                            pAdjustMethod = "BH",
-#                            pvalueCutoff  = 0.01,
-#                            qvalueCutoff  = 0.05,
-#                            readable = FALSE)
-# dotplot(cat_MF)
-# 
-# cat_CC <- compareCluster(gene_list, fun = "enrichGO",
-#                            OrgDb = org.Hs.eg.db,
-#                            keyType       = 'SYMBOL',
-#                            ont           = "CC",
-#                            pAdjustMethod = "BH",
-#                            pvalueCutoff  = 0.01,
-#                            qvalueCutoff  = 0.05,
-#                            readable = FALSE)
-# dotplot(cat_CC, showCategory = 20) +
-#   scale_color_gradient(trans = "log10", high = "blue", low = "red")
-# 
-# cat_BP <- compareCluster(gene_list, fun = "enrichGO",
-#                            OrgDb = org.Hs.eg.db,
-#                            keyType       = 'SYMBOL',
-#                            ont           = "BP",
-#                            pAdjustMethod = "BH",
-#                            pvalueCutoff  = 0.01,
-#                            qvalueCutoff  = 0.05,
-#                            readable = FALSE)
-# dotplot(cat_BP, showCategory = 20) +
-#   scale_color_gradient(trans = "log10", high = "blue", low = "red")
-
-```
 
 ```{r}
 sessionInfo()
