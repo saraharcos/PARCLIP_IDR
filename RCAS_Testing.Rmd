@@ -234,7 +234,7 @@ domains_df2_o <- uniprot_g[uniprot_g %over% df2_o,] %>%
   dplyr::select(name) %>%
   group_by(name) %>%
   tally() %>%
-  mutate(freq = n / sum(n)) %>%
+  mutate(freq = n / length(df2_o)) %>%
   top_n(5, freq)
 
 domains_df2_m <- uniprot_g[uniprot_g %over% df2_m,] %>%
@@ -242,12 +242,12 @@ domains_df2_m <- uniprot_g[uniprot_g %over% df2_m,] %>%
   dplyr::select(name) %>%
   group_by(name) %>%
   tally() %>%
-  mutate(freq = n / sum(n)) %>%
+  mutate(freq = n / length(df2_m)) %>%
   top_n(5, freq)
 
 domains_df2 <- bind_rows("non-m6A" = domains_df2_o, "m6A-modified" = domains_df2_m, .id = "m6A status")
 
-ggplot2::ggplot(domains_df2, aes(x = reorder(name, n), y = n)) + 
+ggplot2::ggplot(domains_df2, aes(x = reorder(name, freq), y = freq)) + 
   geom_bar(stat = 'identity') + 
   labs(x = 'Domain', y = "number overlapped with DF2 peaks") +
   theme_bw(base_size = 14) + 
@@ -380,8 +380,38 @@ ggplot2::ggplot(cvgList_all, aes(x = bins, y = meanCoverage)) +
 uniprot_s <- read_tsv("~/files/uniprot_structure_hg19.dms") %>%
   filter(!str_detect(dbName, "Unreviewed"))
 
-structs <- GRanges(seqnames = uniprot_s$`#chrom`, IRanges(start = uniprot_s$chromStart, end = uniprot_s$chromEnd), type = uniprot_s$name) %>%
+structs <- GRanges(seqnames = uniprot_s$`#chrom`, IRanges(start = uniprot_s$chromStart, end = uniprot_s$chromEnd), name = uniprot_s$name) %>%
   keepStandardChromosomes(pruning.mode="coarse")
+
+
+
+s_df2_o <- structs[structs %over% df2_o,] %>%
+  as_tibble() %>%
+  dplyr::select(name) %>%
+  group_by(name) %>%
+  tally() %>%
+  mutate(freq = n / length(df2_o)) %>%
+  top_n(5, freq)
+
+s_df2_m <- structs[structs %over% df2_m,] %>%
+  as_tibble() %>%
+  dplyr::select(name) %>%
+  group_by(name) %>%
+  tally() %>%
+  mutate(freq = n / length(df2_m)) %>%
+  top_n(5, freq)
+
+s_df2 <- bind_rows("non-m6A" = s_df2_o, "m6A-modified" = s_df2_m, .id = "m6A status")
+
+ggplot2::ggplot(s_df2, aes(x = reorder(name, freq), y = freq)) + 
+  geom_bar(stat = 'identity') + 
+  labs(x = 'Secondary Structure', y = "number overlapped with DF2 peaks") +
+  theme_bw(base_size = 14) + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  coord_flip() +
+  facet_wrap(~`m6A status`, scales = "free_y")
+
+
 
 sFeatures <- list(
   "gff_beta" = structs[structs$type == "beta"],
@@ -786,6 +816,90 @@ ggplot(ribo_groups_bygene %>% filter(col != "Decreased translation" & category !
 ```
 
 
+#GO analysis
+```{r}
+library(scales)
+
+df2_cat <- all_peaks_filt %>%
+  mutate(category = case_when(
+    df2_only_frac <= 0.5 ~ "Most peaks are m6A-modified",
+    df2_only_frac > 0.5 ~ "Most peaks are unmodified",
+    is.na(df2_only_frac) ~ "Non-target"
+  ))
+
+df2_only_MF <- enrichGO(gene = df2_cat %>% filter(category == "Most peaks are unmodified")
+                        %>% pull(name),
+                        OrgDb = org.Hs.eg.db,
+                        keyType = 'SYMBOL',
+                        ont = "MF")
+
+dotplot(df2_only_MF, showCategory = 5)
+
+df2_m6A_MF <- enrichGO(gene = df2_cat %>% filter(category == "Most peaks are m6A-modified")
+                        %>% pull(name),
+                        OrgDb = org.Hs.eg.db,
+                        keyType = 'SYMBOL',
+                        ont = "MF")
+
+dotplot(df2_m6A_MF, showCategory = 5)
+
+df2_only_BP <- enrichGO(gene = df2_cat %>% filter(category == "Most peaks are unmodified")
+                        %>% pull(name),
+                        OrgDb = org.Hs.eg.db,
+                        keyType = 'SYMBOL',
+                        ont = "BP")
+
+dotplot(df2_only_BP, showCategory = 5)
+
+df2_m6A_BP <- enrichGO(gene = df2_cat %>% filter(category == "Most peaks are m6A-modified")
+                        %>% pull(name),
+                        OrgDb = org.Hs.eg.db,
+                        keyType = 'SYMBOL',
+                        ont = "BP")
+
+dotplot(df2_m6A_BP, showCategory = 5)
+
+df2_only_CC <- enrichGO(gene = df2_cat %>% filter(category == "Most peaks are unmodified")
+                        %>% pull(name),
+                        OrgDb = org.Hs.eg.db,
+                        keyType = 'SYMBOL',
+                        ont = "CC")
+
+dotplot(df2_only_CC, showCategory = 5)
+
+df2_m6A_CC <- enrichGO(gene = df2_cat %>% filter(category == "Most peaks are m6A-modified")
+                        %>% pull(name),
+                        OrgDb = org.Hs.eg.db,
+                        keyType = 'SYMBOL',
+                        ont = "CC")
+
+dotplot(df2_only_MF, showCategory = 5, title = "MF DF2 only") +
+  scale_color_gradient(trans = "log10", high = "blue", low = "red") +
+  scale_y_discrete(labels = wrap_format(16)) +
+  scale_x_continuous(limits = c(0, 0.06))
+dotplot(df2_m6A_MF, showCategory = 5, title = "MF DF2 m6A") +
+  scale_color_gradient(trans = "log10", high = "blue", low = "red") +
+  scale_y_discrete(labels = wrap_format(16)) +
+  scale_x_continuous(limits = c(0, 0.06))
+dotplot(df2_only_BP, showCategory = 5, title = "BP DF2 only") +
+  scale_color_gradient(trans = "log10", high = "blue", low = "red") +
+  scale_y_discrete(labels = wrap_format(16)) +
+  scale_x_continuous(limits = c(0, 0.06))
+dotplot(df2_m6A_BP, showCategory = 5, title = "BP DF2 m6A") +
+  scale_color_gradient(trans = "log10", high = "blue", low = "red") +
+  scale_y_discrete(labels = wrap_format(16)) +
+  scale_x_continuous(limits = c(0, 0.06))
+dotplot(df2_only_CC, showCategory = 5, title = "CC DF2 only") +
+  scale_color_gradient(trans = "log10", high = "blue", low = "red") +
+  scale_y_discrete(labels = wrap_format(16)) +
+  scale_x_continuous(limits = c(0, 0.06))
+dotplot(df2_m6A_CC, showCategory = 5, title = "CC DF2 m6A") +
+  scale_color_gradient(trans = "log10", high = "blue", low = "red") +
+  scale_y_discrete(labels = wrap_format(16)) +
+  scale_x_continuous(limits = c(0, 0.06))
+
+
+```
 
 
 ```{r}
